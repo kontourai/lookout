@@ -189,6 +189,14 @@ Milestone strategy (recorded per contract): repo milestone `lookout v0.1 — cam
 
 **Enrichment pass (2026-07-06, user requested "as much detail as possible so a lesser capable model can pick it up"):** every issue body was extended with a full Implementation Guide — exact API signatures verified against source (traverse 0.8.0, survey 1.5.0, datum 0.3.0, campfit main), step-by-step file plans, seam-injection test matrices mapped to AC ids, evidence-run instructions, and pitfalls. Verified API reference docs live at `.kontourai/flow-agents/lookout/reference/` (`traverse-api.md`, `survey-api.md`, `campfit-implementation.md`, `portfolio-conventions.md`) and are cited in each issue's `planning_scope_refs`. Notable facts pinned during enrichment: traverse + survey are on npm (`^0.8.0` / `^1.5.0`); datum is unpublished — consume via `github:kontourai/datum`; portfolio package convention is node:test + strict tsc (no vitest/eslint in packages; vitest is campfit-only); traverse locators are prepared-text offsets → survey `locatorScheme: "text-span"`; C1 must NOT call `refreshCampVerificationCache` on 304 (dataConfidence belongs to the verification authority); L4 must keep snapshot sourceIds stable across cutover or etag lineage breaks.
 
+## capture_audit (2026-07-06)
+
+Loose-end audit after sync. Findings and fixes:
+1. **traverse revalidate unreleased** — the `revalidate`/`etag`/`notModified` mechanics live on OPEN PR kontourai/traverse#32 (closes traverse#31); no released version (≤0.9.0) carries them. lookout#1 and campfit#77 now carry traverse#32 as a structured blocker; L1 can build everything except the 304 path against ^0.9.0 meanwhile. Landing traverse#32 is an owner review call.
+2. **Artifacts made durable** — this artifact + the 4 reference docs are committed at kontourai/lookout `docs/planning/` (commit b001198); all 7 issues now point there (body edits on lookout#1/campfit#77, comments on the rest). The `~/dev/github/kontourai/.kontourai/flow-agents/lookout/` copy remains the working original; keep the repo copy in sync on material edits.
+3. **ops#75 cross-linked** — comment added linking lookout#1 + campfit#77 as the orchestration half and recording the open close-or-wrap question.
+4. Parked ideas below are durable via (2); none needs an issue yet.
+
 ## parked_or_rejected
 
 - I8 news search front door — parked; revisit when L3 lands.
