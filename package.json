@@ -1,0 +1,56 @@
+{
+  "name": "@kontourai/lookout",
+  "version": "0.1.0",
+  "description": "A small source registry and drift-check runner built on Traverse snapshots.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/lookout.git"
+  },
+  "homepage": "https://github.com/kontourai/lookout#readme",
+  "bugs": {
+    "url": "https://github.com/kontourai/lookout/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "bin": {
+    "lookout": "bin/lookout.mjs"
+  },
+  "files": [
+    "dist/src/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "verify": "npm run check:content-boundary && npm run check:decisions && npm run typecheck && npm test && npm run check:pack",
+    "check:content-boundary": "node scripts/check-content-boundary.cjs",
+    "check:decisions": "node scripts/check-decisions.cjs check",
+    "gen:decisions-index": "node scripts/check-decisions.cjs gen-index",
+    "check:pack": "node scripts/check-package-contents.mjs"
+  },
+  "dependencies": {
+    "@kontourai/datum": "0.3.0",
+    "@kontourai/traverse": "0.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
