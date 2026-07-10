@@ -8,6 +8,7 @@ import {
 } from "../../src/index.js";
 import type {
   CanonicalValueKey,
+  CanonicalValueFormatVersion,
   CanonicalValueResult,
   DiffKernelError,
   DiffResult,
@@ -40,6 +41,7 @@ const observation: ProposalSetObservation = {
 
 const canonical: CanonicalValueResult = canonicalValueKey({ label: "Example" });
 const canonicalKey: CanonicalValueKey | undefined = canonical.ok ? canonical.key : undefined;
+const canonicalFormat: CanonicalValueFormatVersion = "lookout-canonical-v1";
 const canonicalError: DiffKernelError | undefined = canonical.ok ? undefined : canonical.error;
 
 const identity: IdentityResult<"entity-example"> = { ok: true, key: "entity-example" };
@@ -67,8 +69,18 @@ const proposalDiff: DiffResult<ProposalSetDiff> = diffProposalSets({
 });
 
 declare const appearance: NewEntityAppearedEvent;
-declare const change: FieldChangedEvent;
+const change: FieldChangedEvent = {
+  kind: "field-changed",
+  entityKey: "entity-example",
+  fieldKey: "records[].label",
+  changeKind: "value-populated",
+  current: {
+    sourceId: "source-example", snapshotRef: "snapshot-example", observedAt: "2026-07-10T00:00:00.000Z",
+    entityKey: "entity-example", fieldKey: "records[].label", value: "Example", confidence: 0.9,
+    provenance: proposal.provenance, extractor: proposal.extractor, fieldPath: proposal.fieldPath,
+  },
+};
 const optionalChangeSides: readonly unknown[] = [change.prior, change.current];
 const events: readonly ProposalDiffEvent[] = [appearance, change];
 
-void [canonicalKey, canonicalError, exactIdentity, structural, multiset, proposalDiff, events, optionalChangeSides];
+void [canonicalKey, canonicalFormat, canonicalError, exactIdentity, structural, multiset, proposalDiff, events, optionalChangeSides];

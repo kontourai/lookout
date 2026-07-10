@@ -1,7 +1,9 @@
 declare const canonicalValueKeyBrand: unique symbol;
 
+export type CanonicalValueFormatVersion = "lookout-canonical-v1";
+
 export type CanonicalValueKey = string & {
-  readonly [canonicalValueKeyBrand]: "CanonicalValueKey";
+  readonly [canonicalValueKeyBrand]: CanonicalValueFormatVersion;
 };
 
 export type DiffKernelErrorKind =

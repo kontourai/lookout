@@ -33,6 +33,12 @@ order recursively. Symbols, functions, cycles, and exotic object instances
 produce typed errors and never escape as thrown exceptions. Callers normalize
 domain wrappers into primitives before encoding.
 
+The length-framed LOOKOUT encoding is the canonical public format v1, identified
+in the exported key brand as `lookout-canonical-v1`. Its exact bytes are part of
+the public contract, not an implementation detail. Any future change to a tag,
+number spelling, frame, ordering rule, or other emitted byte requires a breaking
+format-version bump; byte changes must never ship silently within format v1.
+
 L2 v1 is deterministic-only. It compares already-produced proposal observation
 envelopes and performs no provider resolution, extraction, rendering, fetching,
 persistence, notification, truth resolution, confidence thresholding,

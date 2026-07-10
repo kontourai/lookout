@@ -29,6 +29,7 @@ export { createLookoutSnapshotStore } from "./snapshot-store.js";
 export { canonicalValueKey } from "./canonical-value.js";
 export type {
   CanonicalValueKey,
+  CanonicalValueFormatVersion,
   CanonicalValueResult,
   DiffKernelError,
   DiffKernelErrorKind,

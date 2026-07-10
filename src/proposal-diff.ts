@@ -44,14 +44,18 @@ export interface NewEntityAppearedEvent {
   readonly current: readonly ProposalEvidence[];
 }
 
-export interface FieldChangedEvent {
+interface FieldChangedEventCommon {
   readonly kind: "field-changed";
   readonly entityKey: string;
   readonly fieldKey: string;
   readonly changeKind: FieldChangeKind;
-  readonly prior?: ProposalEvidence;
-  readonly current?: ProposalEvidence;
 }
+
+export type FieldChangedEvent = FieldChangedEventCommon & (
+  | { readonly prior: ProposalEvidence; readonly current: ProposalEvidence }
+  | { readonly prior: ProposalEvidence; readonly current?: never }
+  | { readonly prior?: never; readonly current: ProposalEvidence }
+);
 
 export type ProposalDiffEvent = NewEntityAppearedEvent | FieldChangedEvent;
 

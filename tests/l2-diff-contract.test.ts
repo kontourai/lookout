@@ -70,6 +70,32 @@ function observation(
 }
 
 describe("S-AC1 canonical type-tagged identity", () => {
+  test("pins lookout canonical v1 bytes across the full tagged edge matrix", () => {
+    const canonicalValueKey = required("canonicalValueKey");
+    const hole = Array(1);
+    const matrix: readonly [string, unknown, string][] = [
+      ["undefined", undefined, "u0:"],
+      ["null", null, "n0:"],
+      ["hole", hole, "a3:h0:"],
+      ["undefined element", [undefined], "a6:e3:u0:"],
+      ["negative zero", -0, "d2:-0"],
+      ["NaN", Number.NaN, "d3:nan"],
+      ["positive infinity", Number.POSITIVE_INFINITY, "d4:+inf"],
+      ["negative infinity", Number.NEGATIVE_INFINITY, "d4:-inf"],
+      ["bigint", 123n, "i3:123"],
+      ["key order", { b: 2, a: 1 }, "o22:k1:av4:d1:1k1:bv4:d1:2"],
+      ["delimiter string", "a:b|c", "s5:a:b|c"],
+    ];
+    for (const [name, value, expected] of matrix) {
+      const result = canonicalValueKey(value);
+      assert.equal(result.ok, true, name);
+      if (result.ok) assert.equal(result.key, expected, name);
+    }
+    const reordered = canonicalValueKey({ a: 1, b: 2 });
+    assert.equal(reordered.ok, true);
+    if (reordered.ok) assert.equal(reordered.key, matrix[9]![2]);
+  });
+
   test("distinguishes collision cases and recursively normalizes object key order", () => {
     const canonicalValueKey = required("canonicalValueKey");
     const key = (value: unknown) => {
