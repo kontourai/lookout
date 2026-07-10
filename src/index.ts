@@ -26,3 +26,36 @@ export type {
   RenderPolicy,
 } from "./registry.js";
 export { createLookoutSnapshotStore } from "./snapshot-store.js";
+export { canonicalValueKey } from "./canonical-value.js";
+export type {
+  CanonicalValueKey,
+  CanonicalValueFormatVersion,
+  CanonicalValueResult,
+  DiffKernelError,
+  DiffKernelErrorKind,
+  DiffResult,
+  IdentityResult,
+} from "./canonical-value.js";
+export { compareStructural, diffKeyedMultiset } from "./structural-diff.js";
+export type {
+  KeyedMultisetFacts,
+  KeyedMultisetOptions,
+  StructuralComparison,
+  StructuralComparisonOptions,
+  StructuralFacts,
+} from "./structural-diff.js";
+export { diffProposalSets, extractionProposalIdentity } from "./proposal-diff.js";
+export type {
+  FieldChangedEvent,
+  FieldChangeKind,
+  NewEntityAppearedEvent,
+  ProposalDiffEvent,
+  ProposalEvidence,
+  ProposalIdentity,
+  ProposalOccurrencePair,
+  ProposalSetDiff,
+  ProposalSetDiffInput,
+  ProposalSetFacts,
+  ProposalSetObservation,
+  ProvenanceChangeFact,
+} from "./proposal-diff.js";

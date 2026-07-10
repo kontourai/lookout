@@ -11,3 +11,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | Topic | Status | Decision |
 | --- | --- | --- |
 | [l1-registry-and-results](./l1-registry-and-results.md) | current | L1 source registry, drift classification, and result contract |
+| [l2-deterministic-diff-kernel](./l2-deterministic-diff-kernel.md) | current | L2 deterministic diff kernel and proposal-set events |
