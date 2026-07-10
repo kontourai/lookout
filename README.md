@@ -65,9 +65,17 @@ carries `sourceId`, the registered `sourceUrl`, `checkedAt`, and Traverse
 | `kind` | When | Extra fields |
 | --- | --- | --- |
 | `unchanged-304` | A validator-backed conditional request returned `304`; zero body transfer; the prior snapshot is not re-persisted. | `snapshotRef` |
-| `unchanged-hash` | A full body was fetched and persisted, but its sha256 `bodyHash` equals the prior — established by Lookout's own comparison. | `priorSnapshotRef`, `currentSnapshotRef` |
+| `unchanged-hash` | A full body was fetched and persisted, but its sha256 `bodyHash` equals the prior, **and** it came from the same resource URL — established by Lookout's own comparison. | `priorSnapshotRef`, `currentSnapshotRef` |
 | `changed` | The fresh body differs from the prior (`changeBasis: "hash"`), **or** it is the first successful observation (`changeBasis: "initial"`, `priorSnapshotRef: null`). | `priorSnapshotRef` (nullable), `currentSnapshotRef`, `changeBasis` |
 | `error` | Any operational failure — contained so the runner never rejects. | `origin` (`traverse` \| `lookout`), `error` |
+
+`unchanged-hash` asserts same-resource continuity, so it requires **both** an
+identical `bodyHash` **and** the same resource URL as the prior snapshot. If a
+source has moved — the prior snapshot's URL differs from this fetch's — the
+result is `changed` even when the bytes are byte-identical, and the fresh
+snapshot is persisted as the new baseline. (The `unchanged-304` path is already
+resource-scoped by Traverse's validators, so only the hash path needs this
+guard.)
 
 `error` results preserve provenance: `origin: "traverse"` carries Traverse's
 discriminated `FetchError` verbatim (its `kind`, and `status` when present);

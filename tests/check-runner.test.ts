@@ -154,6 +154,57 @@ test("L1 check does not invoke the datum resolver", async () => {
   assert.equal(calls, 0);
 });
 
+test("L-1 hostile fetch returning {snapshot: null} yields a dependency-contract error and never rejects", async () => {
+  const result = await createCheckRunner({
+    store: memoryStore(),
+    fetchSource: async () => ({ snapshot: null }) as unknown as FetchResult,
+  }).check(source("alpha"));
+  assert.equal(result.kind, "error");
+  if (result.kind !== "error") return;
+  assert.equal(result.origin, "lookout");
+  assert.equal(result.error.kind, "dependency-contract");
+});
+
+test("L-1 hostile fetch returning {error: null} yields a dependency-contract error and never rejects", async () => {
+  const result = await createCheckRunner({
+    store: memoryStore(),
+    fetchSource: async () => ({ error: null }) as unknown as FetchResult,
+  }).check(source("alpha"));
+  assert.equal(result.kind, "error");
+  if (result.kind !== "error") return;
+  assert.equal(result.origin, "lookout");
+  assert.equal(result.error.kind, "dependency-contract");
+});
+
+test("L-2 source url change with identical body classifies changed (moved resource re-baselines)", async () => {
+  const prior = snapshot("alpha", "same", { url: "https://example.test/old", fetchedAt: "2026-07-10T10:00:00.000Z" });
+  const current = snapshot("alpha", "same", { fetchedAt: "2026-07-10T11:00:00.000Z" });
+  const store = memoryStore([prior]);
+  const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
+  assert.equal(result.kind, "changed");
+  if (result.kind !== "changed") return;
+  assert.equal(result.changeBasis, "hash");
+  assert.equal(store.puts.length, 1); // fresh snapshot persisted as the new baseline
+});
+
+test("L-2 source url change with different body classifies changed", async () => {
+  const prior = snapshot("alpha", "old", { url: "https://example.test/old", fetchedAt: "2026-07-10T10:00:00.000Z" });
+  const current = snapshot("alpha", "new", { fetchedAt: "2026-07-10T11:00:00.000Z" });
+  const store = memoryStore([prior]);
+  const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
+  assert.equal(result.kind, "changed");
+  assert.equal(store.puts.length, 1);
+});
+
+test("L-2 same url with identical body still classifies unchanged-hash", async () => {
+  const prior = snapshot("alpha", "same", { fetchedAt: "2026-07-10T10:00:00.000Z" });
+  const current = snapshot("alpha", "same", { fetchedAt: "2026-07-10T11:00:00.000Z" });
+  const store = memoryStore([prior]);
+  const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
+  assert.equal(result.kind, "unchanged-hash");
+  assert.equal(store.puts.length, 1);
+});
+
 function rejectingStore(mode: "read" | "write"): SnapshotStore {
   return {
     async put() { if (mode === "write") throw new Error("disk full"); },

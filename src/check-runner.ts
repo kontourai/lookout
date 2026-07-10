@@ -66,33 +66,44 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
       return { ...base, kind: "error", origin: "traverse", error: fetched.error };
     }
 
-    const snapshot = fetched.snapshot;
-    if (snapshot.notModified === true) {
-      return { ...base, kind: "unchanged-304", snapshotRef: buildSnapshotSourceRef(snapshot) };
-    }
-
+    // Defense-in-depth: even if a future guard gap let a malformed snapshot
+    // through, any stray throw in classification/ref-building becomes a typed
+    // `unexpected` lookout error rather than a rejection (R2 never-throw).
     try {
-      await options.store.put(snapshot);
+      const snapshot = fetched.snapshot;
+      if (snapshot.notModified === true) {
+        return { ...base, kind: "unchanged-304", snapshotRef: buildSnapshotSourceRef(snapshot) };
+      }
+
+      try {
+        await options.store.put(snapshot);
+      } catch (error) {
+        return lookoutError(base, "persistence", error);
+      }
+
+      const currentSnapshotRef = buildSnapshotSourceRef(snapshot);
+      if (!prior) {
+        return {
+          ...base,
+          kind: "changed",
+          priorSnapshotRef: null,
+          currentSnapshotRef,
+          changeBasis: "initial",
+        };
+      }
+
+      const priorSnapshotRef = buildSnapshotSourceRef(prior);
+      // Same-resource continuity requires BOTH the resource URL and the body to
+      // match. A moved resource (prior's final URL differs from this fetch's)
+      // re-baselines as `changed` even when the bytes are identical — "unchanged"
+      // must not claim continuity across a URL change.
+      if (prior.url === snapshot.url && prior.bodyHash === snapshot.bodyHash) {
+        return { ...base, kind: "unchanged-hash", priorSnapshotRef, currentSnapshotRef };
+      }
+      return { ...base, kind: "changed", priorSnapshotRef, currentSnapshotRef, changeBasis: "hash" };
     } catch (error) {
-      return lookoutError(base, "persistence", error);
+      return lookoutError(base, "unexpected", error);
     }
-
-    const currentSnapshotRef = buildSnapshotSourceRef(snapshot);
-    if (!prior) {
-      return {
-        ...base,
-        kind: "changed",
-        priorSnapshotRef: null,
-        currentSnapshotRef,
-        changeBasis: "initial",
-      };
-    }
-
-    const priorSnapshotRef = buildSnapshotSourceRef(prior);
-    if (prior.bodyHash === snapshot.bodyHash) {
-      return { ...base, kind: "unchanged-hash", priorSnapshotRef, currentSnapshotRef };
-    }
-    return { ...base, kind: "changed", priorSnapshotRef, currentSnapshotRef, changeBasis: "hash" };
   }
 
   async function checkAll(sources: readonly LookoutSource[]): Promise<CheckResult[]> {
@@ -107,8 +118,8 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
 function isFetchResult(value: unknown): value is { snapshot: Snapshot; error?: never; warnings?: string[] } | { error: NonNullable<FetchResult["error"]>; snapshot?: never; warnings?: string[] } {
   if (typeof value !== "object" || value === null) return false;
   const result = value as FetchResult;
-  const hasSnapshot = result.snapshot !== undefined;
-  const hasError = result.error !== undefined;
+  const hasSnapshot = result.snapshot != null;
+  const hasError = result.error != null;
   return hasSnapshot !== hasError;
 }
 
