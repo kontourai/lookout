@@ -76,6 +76,8 @@ describe("S-AC1 canonical type-tagged identity", () => {
     const matrix: readonly [string, unknown, string][] = [
       ["undefined", undefined, "u0:"],
       ["null", null, "n0:"],
+      ["true", true, "b1:1"],
+      ["false", false, "b1:0"],
       ["hole", hole, "a3:h0:"],
       ["undefined element", [undefined], "a6:e3:u0:"],
       ["negative zero", -0, "d2:-0"],
@@ -93,7 +95,7 @@ describe("S-AC1 canonical type-tagged identity", () => {
     }
     const reordered = canonicalValueKey({ a: 1, b: 2 });
     assert.equal(reordered.ok, true);
-    if (reordered.ok) assert.equal(reordered.key, matrix[9]![2]);
+    if (reordered.ok) assert.equal(reordered.key, matrix[11]![2]);
   });
 
   test("distinguishes collision cases and recursively normalizes object key order", () => {
