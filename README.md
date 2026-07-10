@@ -5,10 +5,10 @@ A small **source registry** and **non-throwing drift-check runner** built on
 question per registered source, cheaply and honestly: *did this source change
 since we last looked?*
 
-It composes Traverse for fetching and snapshot storage. At this slice (L1) it
-does **not** extract fields, diff semantically, emit events, notify, crawl, or
-schedule — scheduling stays external (e.g. boo). The runner **never throws**:
-every operational failure becomes a typed result.
+It composes Traverse for fetching and snapshot storage, provides deterministic
+proposal diffing, and authors provenance-bearing Survey inputs. It does **not**
+extract fields, project to Surface, review claims, notify, crawl, or schedule.
+Operational failures are returned as typed results.
 
 ## Requirements
 
@@ -94,6 +94,7 @@ custom filenames or retention.
 ```
 lookout check <id> [--registry <path>] [--snapshot-root <path>]
 lookout check --all [--registry <path>] [--snapshot-root <path>]
+lookout emit-survey <id> --observation <path|-> [--registry <path>] [--observation-root <path>]
 ```
 
 - Emits **exactly one compact JSON object per checked source, per stdout line**
@@ -108,6 +109,18 @@ lookout check --all [--registry <path>] [--snapshot-root <path>]
 
 This exit/output contract is what makes `lookout check --all` safe to drive from
 an external scheduler.
+
+`emit-survey` is a separate composable command: its input is a JSON object with
+`observation` (a `ProposalSetObservation`) and its matching `check` anchor.
+Extraction is supplied by the caller. The first successful input commits a
+baseline fact and returns `surveyInput: null`; a genuine later change returns
+one unreviewed SurveyInput batch. State defaults to
+`.kontourai/lookout/observations`, uses immutable digest-addressed records and
+an atomic per-source pointer, and retains the latest two valid observations.
+Consumers pass the batch to Survey when they want Surface projection.
+Store paths refuse symbolic links. An existing source lock is not automatically
+broken: after confirming no writer is active, an operator may remove an
+abandoned `.lock` file and retry.
 
 ## Library
 
@@ -127,10 +140,10 @@ const results = await runner.checkAll(registry.list());
 Traverse), `fetchOptions`, and `clock` — so checks run with no live network or
 timers in tests.
 
-## Non-goals (this slice)
+## Non-goals
 
-Semantic diffing, change events, extraction/projection, notifications, crawling,
-snapshot retention, review/escalation policy, rendered-fetch wiring
+Extraction, Surface projection, notifications, crawling, review/escalation or
+authority policy, rendered-fetch wiring
 (`renderPolicy` is inert pending traverse#50), and scheduling. Traverse retains
 all fetch politeness, robots, redirects, retries, timeouts, headers, user-agent,
 and rendered-fetch behavior.

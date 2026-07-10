@@ -2,11 +2,12 @@
 
 Lookout is `@kontourai/lookout`, a source registry and drift-check runner built
 on Traverse snapshots. Given a registry of sources and a snapshot store, it
-answers one question per source cheaply and honestly: *did this source change
-since we last looked?* It composes Traverse (fetch + snapshots), and threads a
-Datum resolver capability for later slices, but at L1 it performs no extraction,
-no semantic diffing, no events, no notification, and no scheduling. The runner
-NEVER throws: every operational failure is a typed result, not an exception.
+answers whether a source drifted, can deterministically compare caller-produced
+proposal observations, and can author unreviewed Survey inputs. It composes
+Traverse for fetch and snapshots and Survey for record authoring. Extraction,
+Surface projection, authority policy, notification, and scheduling remain
+external. Public operational entrypoints return typed results rather than
+throwing.
 
 ## Term Glossary
 
@@ -57,12 +58,25 @@ NEVER throws: every operational failure is a typed result, not an exception.
 - **Provider Resolver** (`ProviderResolver`): a Datum `resolve` capability
   threaded into the runner for L2. L1 accepts it but **never invokes it** —
   resolving would materialize secrets for no purpose this slice.
+- **Proposal Observation Store** (`ObservationStore`): Lookout-owned,
+  digest-addressed proposal continuity under
+  `<cwd>/.kontourai/lookout/observations`. It validates same-source snapshot and
+  check anchors, atomically advances one per-source pointer, and retains the two
+  newest valid committed observations. Missing means first run; corruption is a
+  typed error and never an empty baseline.
+- **Survey emission** (`SurveyEmitter`): compares a genuine stored prior with a
+  current caller-produced proposal observation and authors one proposed Survey
+  claim per L2 event. Registry kind supplies origin, resolution is always
+  `observation`, and authorization is absent. First observation produces a
+  baseline fact, no events, and no SurveyInput.
+- **Consumer projection**: passing an authored SurveyInput to Survey's Surface
+  projection API is a consumer responsibility. Lookout neither imports Surface
+  nor chooses review, supersession, precedence, or carry-forward policy.
 
 ## Boundary
 
-Lookout owns the registry, drift classification, result contract, and the JSONL
-CLI. Traverse owns politeness, robots, redirects, retries, timeout, headers,
-user-agent, rendered fetch, snapshot capture/storage, and fresh-hash
-computation. Scheduling/cadence interpretation is external (boo). Semantic
-diffing, events, extraction, notification, crawling, retention, and review
-policy are later slices, not L1.
+Lookout owns the registry, drift classification, deterministic proposal diff,
+proposal-observation continuity, unreviewed SurveyInput authoring, and JSONL
+commands. Traverse owns fetching and snapshots. Survey owns its input builder
+and projection contract. Extraction, Surface projection, notification,
+crawling, review/authority policy, and scheduling remain external.
