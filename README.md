@@ -37,9 +37,18 @@ One layer in a four-verb stack; each repo owns one verb and is usable alone:
 - **survey** — the SHAPE: what reviewed truth looks like (claims / review / resolution)
 
 Lookout composes the fetch/snapshot layer (today Traverse's `/fetch`; re-points at
-`forage` as that lands) for cheap `304`-aware re-checks, and Traverse's
-`ExtractionProposal` identity for the semantic diff. Dependency arrows point only
-downward — no cycles.
+`forage` as its single-source fetch surface lands) for cheap `304`-aware re-checks,
+and Traverse's `ExtractionProposal` identity for the semantic diff. Dependency
+arrows point only downward — no cycles.
+
+**SSRF-safe egress.** Registered source URLs are operator- / aggregator-supplied
+and not fully trusted, so lookout routes its default fetch transport through
+[forage](https://github.com/kontourai/forage)'s SSRF-pinned guarded fetch
+(`@kontourai/forage/egress`). A registered source pointing at a private,
+link-local, loopback, or cloud-metadata host (e.g. `169.254.169.254`) is refused
+before any connection — a drift check can never be turned into an SSRF vector.
+A caller that injects its own `fetchSource` or `fetchOptions.fetch` (e.g. tests)
+owns its transport and opts out of the default guard.
 
 ## Requirements
 
@@ -168,8 +177,9 @@ const results = await runner.checkAll(registry.list());
 ```
 
 `createCheckRunner` accepts injected seams — `store`, `fetchSource` (defaults to
-Traverse), `fetchOptions`, and `clock` — so checks run with no live network or
-timers in tests.
+Traverse's fetcher over forage's SSRF-guarded egress), `fetchOptions`, and
+`clock` — so checks run with no live network or timers in tests. Injecting either
+`fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
 ## Non-goals
 
