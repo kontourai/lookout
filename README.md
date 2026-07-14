@@ -1,14 +1,45 @@
 # @kontourai/lookout
 
-A small **source registry** and **non-throwing drift-check runner** built on
-[Traverse](https://github.com/kontourai/traverse) snapshots. Lookout answers one
-question per registered source, cheaply and honestly: *did this source change
-since we last looked?*
+**Cheap, honest drift detection for content you re-check over time — "did this source change since we last looked?"**
 
-It composes Traverse for fetching and snapshot storage, provides deterministic
-proposal diffing, and authors provenance-bearing Survey inputs. It does **not**
-extract fields, project to Surface, review claims, notify, crawl, or schedule.
-Operational failures are returned as typed results.
+A small **source registry** and **non-throwing drift-check runner** built on
+[Traverse](https://github.com/kontourai/traverse) snapshots. It composes Traverse
+for fetching and snapshot storage, provides deterministic proposal diffing, and
+authors provenance-bearing Survey inputs. It does **not** extract fields, project
+to Surface, review claims, notify, crawl, or schedule. Operational failures are
+returned as typed results.
+
+## Why it's different
+
+The naive way to answer "did it change?" is to re-crawl the source and diff the
+bytes. That's expensive (full re-download every time), noisy (a changed ad or
+timestamp reads as "changed"), and fragile (a thrown error mid-run looks the same
+as "no change"). Lookout is the opposite on all three:
+
+| | Re-crawl + byte-diff | `lookout` |
+|---|---|---|
+| Cost | full re-download every check | **conditional `304`** — often no download at all |
+| Signal | raw bytes (ads/timestamps = "changed") | **proposal-identity diff** — "a *new entity appeared*" vs "a byte moved" |
+| Honesty | a crash or false-`304` silently reads as "unchanged" | **typed results, never throws**; hardened against false-`304` (the [traverse#49](https://github.com/kontourai/traverse/issues/49) validator-scoping pin) |
+| Output | your problem to shape | **provenance-bearing Survey inputs**, review-ready |
+
+So the point isn't "diffing" — it's *cheap + honest + semantic + review-ready*
+change detection, so a periodic re-check surfaces **only the real delta** (this
+provider is new, that listing changed) instead of re-reviewing everything.
+
+## Where it sits
+
+One layer in a four-verb stack; each repo owns one verb and is usable alone:
+
+- **[forage](https://github.com/kontourai/forage)** — CRAWL: fetch / frontier / SSRF-safe egress / snapshots
+- **[traverse](https://github.com/kontourai/traverse)** — EXTRACT: content + schema → reviewable proposals
+- **lookout** — CHANGE: did this registered source drift since last look?
+- **survey** — the SHAPE: what reviewed truth looks like (claims / review / resolution)
+
+Lookout composes the fetch/snapshot layer (today Traverse's `/fetch`; re-points at
+`forage` as that lands) for cheap `304`-aware re-checks, and Traverse's
+`ExtractionProposal` identity for the semantic diff. Dependency arrows point only
+downward — no cycles.
 
 ## Requirements
 
