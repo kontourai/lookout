@@ -63,3 +63,5 @@ export { createObservationStore } from "./observation-store.js";
 export type { CreateObservationStoreOptions, ObservationCheckAnchor, ObservationStore, ObservationStoreError, ObservationStoreErrorKind, ObservationStoreResult, ProposalObservationRecordInput, StoredProposalObservationV1 } from "./observation-store.js";
 export { createDriftEmitter } from "./drift-emission.js";
 export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput } from "./drift-emission.js";
+export { checkSchemaCoverage } from "./coverage.js";
+export type { SchemaCoverageGap, SchemaCoverageResult } from "./coverage.js";

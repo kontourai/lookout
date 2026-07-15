@@ -38,13 +38,22 @@ One layer in a four-verb stack; each repo owns one verb and is usable alone:
 - **survey** — the SHAPE: what reviewed truth looks like (claims / review / resolution)
 
 Lookout composes the fetch/snapshot layer (today Traverse's `/fetch`; re-points at
-`forage` as that lands) for cheap `304`-aware re-checks, and Traverse's
-`ExtractionProposal` identity for the semantic diff. Dependency arrows point only
-downward — no cycles. Lookout itself depends on nothing in the trust layer: its
-events are already Hachure-evidence-shaped (`snapshotRef` / `locator` / `excerpt`
-/ `fieldPath`), so a consumer or product lifts them into a Hachure `TrustBundle`
-via `@kontourai/surface`'s `TrustBundleBuilder` — the same pattern Traverse uses
-to match Survey's shape without importing Survey.
+`forage` as its single-source fetch surface lands) for cheap `304`-aware re-checks,
+and Traverse's `ExtractionProposal` identity for the semantic diff. Dependency
+arrows point only downward — no cycles. Lookout itself depends on nothing in the
+trust layer: its events are already Hachure-evidence-shaped (`snapshotRef` /
+`locator` / `excerpt` / `fieldPath`), so a consumer or product lifts them into a
+Hachure `TrustBundle` via `@kontourai/surface`'s `TrustBundleBuilder` — the same
+pattern Traverse uses to match Survey's shape without importing Survey.
+
+**SSRF-safe egress.** Registered source URLs are operator- / aggregator-supplied
+and not fully trusted, so lookout routes its default fetch transport through
+[forage](https://github.com/kontourai/forage)'s SSRF-pinned guarded fetch
+(`@kontourai/forage/egress`). A registered source pointing at a private,
+link-local, loopback, or cloud-metadata host (e.g. `169.254.169.254`) is refused
+before any connection — a drift check can never be turned into an SSRF vector.
+A caller that injects its own `fetchSource` or `fetchOptions.fetch` (e.g. tests)
+owns its transport and opts out of the default guard.
 
 ## Requirements
 
@@ -125,6 +134,33 @@ default at `<cwd>/.kontourai/lookout/snapshots` (override with the CLI
 `--snapshot-root` flag or by injecting a store in library use). Lookout adds no
 custom filenames or retention.
 
+## Schema coverage
+
+Drift isn't only "the bytes changed" — a source can reformat so that a field
+your schema *declares* silently stops being produced. The byte/proposal diffs
+above are temporal (they need a prior and say nothing on a first look), so they
+can't catch this. `checkSchemaCoverage` is the static complement:
+
+```ts
+import { checkSchemaCoverage } from "@kontourai/lookout";
+
+const { covered, gaps } = checkSchemaCoverage(source.targetSchema, proposals);
+// covered: declared paths at least one proposal produced (schema order)
+// gaps:    declared paths that produced none, each with its `required` flag
+for (const gap of gaps) {
+  // escalate a missing required field harder than a missing optional one
+}
+```
+
+It reduces one declared `TargetFieldSchema[]` and one produced
+`ExtractionProposal[]` set into `{ covered, gaps }` by exact
+`proposal.fieldPath === field.path`. It is pure and total — no prior, no
+network, no throw — and answers on the very first observation. It measures the
+produced set you pass (it runs no post-verification filtering itself), reports
+only against the *declared* surface (an undeclared proposal path is neither
+covered nor a gap), and preserves schema order. Escalation — warning, review
+item, or hard failure — is the consumer's call.
+
 ## CLI
 
 ```
@@ -177,8 +213,9 @@ const results = await runner.checkAll(registry.list());
 ```
 
 `createCheckRunner` accepts injected seams — `store`, `fetchSource` (defaults to
-Traverse), `fetchOptions`, and `clock` — so checks run with no live network or
-timers in tests.
+Traverse's fetcher over forage's SSRF-guarded egress), `fetchOptions`, and
+`clock` — so checks run with no live network or timers in tests. Injecting either
+`fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
 ## Non-goals
 
