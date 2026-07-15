@@ -1,7 +1,8 @@
 ---
-status: current
+status: superseded
 subject: L3 provenance-bearing SurveyInput emission and observation continuity
 decided: 2026-07-10
+superseded_by: neutral-drift-emission
 evidence:
   - kind: issue
     ref: https://github.com/kontourai/lookout/issues/3

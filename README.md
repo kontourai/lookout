@@ -5,8 +5,9 @@
 A small **source registry** and **non-throwing drift-check runner** built on
 [Traverse](https://github.com/kontourai/traverse) snapshots. It composes Traverse
 for fetching and snapshot storage, provides deterministic proposal diffing, and
-authors provenance-bearing Survey inputs. It does **not** extract fields, project
-to Surface, review claims, notify, crawl, or schedule. Operational failures are
+emits neutral, typed drift — its own vocabulary, in its own dependency-free
+package. It does **not** extract fields, author trust-layer records, project to
+Surface, review claims, notify, crawl, or schedule. Operational failures are
 returned as typed results.
 
 ## Why it's different
@@ -21,7 +22,7 @@ as "no change"). Lookout is the opposite on all three:
 | Cost | full re-download every check | **conditional `304`** — often no download at all |
 | Signal | raw bytes (ads/timestamps = "changed") | **proposal-identity diff** — "a *new entity appeared*" vs "a byte moved" |
 | Honesty | a crash or false-`304` silently reads as "unchanged" | **typed results, never throws**; hardened against false-`304` (the [traverse#49](https://github.com/kontourai/traverse/issues/49) validator-scoping pin) |
-| Output | your problem to shape | **provenance-bearing Survey inputs**, review-ready |
+| Output | your problem to shape | **neutral, typed drift** — events already Hachure-evidence-shaped, ready for a consumer to lift into a trust bundle |
 
 So the point isn't "diffing" — it's *cheap + honest + semantic + review-ready*
 change detection, so a periodic re-check surfaces **only the real delta** (this
@@ -39,7 +40,11 @@ One layer in a four-verb stack; each repo owns one verb and is usable alone:
 Lookout composes the fetch/snapshot layer (today Traverse's `/fetch`; re-points at
 `forage` as that lands) for cheap `304`-aware re-checks, and Traverse's
 `ExtractionProposal` identity for the semantic diff. Dependency arrows point only
-downward — no cycles.
+downward — no cycles. Lookout itself depends on nothing in the trust layer: its
+events are already Hachure-evidence-shaped (`snapshotRef` / `locator` / `excerpt`
+/ `fieldPath`), so a consumer or product lifts them into a Hachure `TrustBundle`
+via `@kontourai/surface`'s `TrustBundleBuilder` — the same pattern Traverse uses
+to match Survey's shape without importing Survey.
 
 ## Requirements
 
@@ -125,7 +130,7 @@ custom filenames or retention.
 ```
 lookout check <id> [--registry <path>] [--snapshot-root <path>]
 lookout check --all [--registry <path>] [--snapshot-root <path>]
-lookout emit-survey <id> --observation <path|-> [--registry <path>] [--observation-root <path>]
+lookout emit-drift <id> --observation <path|-> [--registry <path>] [--observation-root <path>]
 ```
 
 - Emits **exactly one compact JSON object per checked source, per stdout line**
@@ -141,14 +146,18 @@ lookout emit-survey <id> --observation <path|-> [--registry <path>] [--observati
 This exit/output contract is what makes `lookout check --all` safe to drive from
 an external scheduler.
 
-`emit-survey` is a separate composable command: its input is a JSON object with
+`emit-drift` is a separate composable command: its input is a JSON object with
 `observation` (a `ProposalSetObservation`) and its matching `check` anchor.
 Extraction is supplied by the caller. The first successful input commits a
-baseline fact and returns `surveyInput: null`; a genuine later change returns
-one unreviewed SurveyInput batch. State defaults to
-`.kontourai/lookout/observations`, uses immutable digest-addressed records and
-an atomic per-source pointer, and retains the latest two valid observations.
-Consumers pass the batch to Survey when they want Surface projection.
+baseline fact and returns `priorObservationId: null` with empty `events`; a
+genuine later change returns non-empty `events` and `facts` plus a
+`priorObservationId` pointing at the prior observation it was diffed against.
+State defaults to `.kontourai/lookout/observations`, uses immutable
+digest-addressed records and an atomic per-source pointer, and retains the
+latest two valid observations. The emitted `events` are already
+Hachure-evidence-shaped; a consumer or product lifts them into a Hachure
+`TrustBundle` with `@kontourai/surface`'s `TrustBundleBuilder` when it wants
+Surface projection — lookout itself authors nothing in the trust layer.
 Store paths refuse symbolic links. An existing source lock is not automatically
 broken: after confirming no writer is active, an operator may remove an
 abandoned `.lock` file and retry.

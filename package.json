@@ -44,7 +44,6 @@
   },
   "dependencies": {
     "@kontourai/datum": "0.3.0",
-    "@kontourai/survey": "1.7.0",
     "@kontourai/traverse": "0.14.1"
   },
   "devDependencies": {

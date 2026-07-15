@@ -83,21 +83,21 @@ test("CLI stdout contains no human prose or snapshot bodies", async () => {
   assert.deepEqual(Object.keys(JSON.parse(output.value)).includes("body"), false);
 });
 
-test("L3-AC9 emit-survey is separate, composable, and emits one success JSONL line", async () => {
+test("L3-AC9 emit-drift is separate, composable, and emits one success JSONL line", async () => {
   const output = capture();
   const exitCode = await runCli({
-    argv: ["emit-survey", "alpha", "--observation", "-", "--observation-root", "/tmp/observations"], stdout: output, stderr: capture(),
+    argv: ["emit-drift", "alpha", "--observation", "-", "--observation-root", "/tmp/observations"], stdout: output, stderr: capture(),
     loadRegistry: async () => new LookoutRegistry([source("alpha")]), readObservation: async (file) => ({ file }),
-    emitSurvey: async (id, value, _registry, root) => ({ ok: true, value: { sourceId: id, events: [], facts: [], surveyInput: null, committedObservation: { version: 1, observationId: "digest", sourceKey: "key", sourceId: id, snapshotRef: "snapshot", observedAt: "observed", recordedAt: "recorded", check: { checkedAt: "checked", resultKind: "changed", currentSnapshotRef: "snapshot" }, proposals: [] }, warnings: [`${(value as { file: string }).file}:${root}`] } }),
+    emitDrift: async (id, value, _registry, root) => ({ ok: true, value: { sourceId: id, events: [], facts: [], priorObservationId: null, committedObservation: { version: 1, observationId: "digest", sourceKey: "key", sourceId: id, snapshotRef: "snapshot", observedAt: "observed", recordedAt: "recorded", check: { checkedAt: "checked", resultKind: "changed", currentSnapshotRef: "snapshot" }, proposals: [] }, warnings: [`${(value as { file: string }).file}:${root}`] } }),
   });
   assert.equal(exitCode, 0);
   assert.equal(output.value.trimEnd().split("\n").length, 1);
   assert.deepEqual(JSON.parse(output.value).warnings, ["-:/tmp/observations"]);
 });
 
-test("L3-AC9 emit-survey failures write stderr, no stdout, and check rejects emission flags", async () => {
+test("L3-AC9 emit-drift failures write stderr, no stdout, and check rejects emission flags", async () => {
   const stdout = capture(); const stderr = capture();
-  const failed = await runCli({ argv: ["emit-survey", "alpha", "--observation", "bad.json"], stdout, stderr, loadRegistry: async () => new LookoutRegistry([source("alpha")]), readObservation: async () => { throw new Error("malformed input"); } });
+  const failed = await runCli({ argv: ["emit-drift", "alpha", "--observation", "bad.json"], stdout, stderr, loadRegistry: async () => new LookoutRegistry([source("alpha")]), readObservation: async () => { throw new Error("malformed input"); } });
   assert.equal(failed, 1); assert.equal(stdout.value, ""); assert.match(stderr.value, /malformed input/);
   const checkError = capture();
   assert.equal(await runCli({ argv: ["check", "alpha", "--observation", "x"], stdout: capture(), stderr: checkError }), 2);
@@ -110,18 +110,18 @@ test("L3-AC9 real CLI persists first/second observations and contains malformed,
     await writeFile(path.join(cwd, "lookout.sources.json"), JSON.stringify({ version: 1, sources: [source("alpha")] }));
     const one = observationDocument("snapshot-1", "old"); const two = observationDocument("snapshot-2", "new");
     await writeFile(path.join(cwd, "one.json"), JSON.stringify(one)); await writeFile(path.join(cwd, "two.json"), JSON.stringify(two));
-    const first = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "one.json"]);
-    assert.deepEqual({ code: first.code, stderr: first.stderr }, { code: 0, stderr: "" }); assert.equal(first.stdout.trimEnd().split("\n").length, 1); assert.equal(JSON.parse(first.stdout).surveyInput, null);
-    const second = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "two.json"]);
-    assert.deepEqual({ code: second.code, stderr: second.stderr }, { code: 0, stderr: "" }); assert.equal(JSON.parse(second.stdout).events.length, 1); assert.equal(JSON.parse(second.stdout).surveyInput.claims.length, 1);
-    const stdinRoot = path.join(cwd, "stdin-state"); const stdinFirst = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "-", "--observation-root", stdinRoot], JSON.stringify(one));
-    assert.equal(stdinFirst.code, 0); assert.equal(JSON.parse(stdinFirst.stdout).surveyInput, null);
-    const unknown = await runLookout(cwd, ["emit-survey", "missing", "--observation", "one.json"]); assert.deepEqual({ code: unknown.code, stdout: unknown.stdout, stderr: unknown.stderr }, { code: 1, stdout: "", stderr: "Unknown source id: missing\n" });
-    await writeFile(path.join(cwd, "bad.json"), "{"); const malformed = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "bad.json"]); assert.equal(malformed.code, 1); assert.equal(malformed.stdout, ""); assert.match(malformed.stderr, /^Could not read observation:/);
+    const first = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "one.json"]);
+    assert.deepEqual({ code: first.code, stderr: first.stderr }, { code: 0, stderr: "" }); assert.equal(first.stdout.trimEnd().split("\n").length, 1); assert.equal(JSON.parse(first.stdout).priorObservationId, null);
+    const second = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "two.json"]);
+    assert.deepEqual({ code: second.code, stderr: second.stderr }, { code: 0, stderr: "" }); assert.equal(JSON.parse(second.stdout).events.length, 1); assert.notEqual(JSON.parse(second.stdout).priorObservationId, null);
+    const stdinRoot = path.join(cwd, "stdin-state"); const stdinFirst = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "-", "--observation-root", stdinRoot], JSON.stringify(one));
+    assert.equal(stdinFirst.code, 0); assert.equal(JSON.parse(stdinFirst.stdout).priorObservationId, null);
+    const unknown = await runLookout(cwd, ["emit-drift", "missing", "--observation", "one.json"]); assert.deepEqual({ code: unknown.code, stdout: unknown.stdout, stderr: unknown.stderr }, { code: 1, stdout: "", stderr: "Unknown source id: missing\n" });
+    await writeFile(path.join(cwd, "bad.json"), "{"); const malformed = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "bad.json"]); assert.equal(malformed.code, 1); assert.equal(malformed.stdout, ""); assert.match(malformed.stderr, /^Could not read observation:/);
     const stateRoot = path.join(cwd, ".kontourai", "lookout", "observations"); const sourceDir = path.join(stateRoot, (await readdir(stateRoot))[0]!); const pointer = JSON.parse(await readFile(path.join(sourceDir, "latest.json"), "utf8")); await writeFile(path.join(sourceDir, `${pointer.observationId}.json`), "{}");
-    const corrupt = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "two.json"]); assert.equal(corrupt.code, 1); assert.equal(corrupt.stdout, ""); assert.match(corrupt.stderr, /^prior-state-error:/);
+    const corrupt = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "two.json"]); assert.equal(corrupt.code, 1); assert.equal(corrupt.stdout, ""); assert.match(corrupt.stderr, /^prior-state-error:/);
     const outside = path.join(cwd, "outside"); await writeFile(outside, "marker"); const linkedRoot = path.join(cwd, "linked-root"); await symlink(outside, linkedRoot);
-    const unwritable = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "one.json", "--observation-root", linkedRoot]); assert.equal(unwritable.code, 1); assert.equal(unwritable.stdout, ""); assert.match(unwritable.stderr, /^prior-state-error:/); assert.equal(await readFile(outside, "utf8"), "marker");
+    const unwritable = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "one.json", "--observation-root", linkedRoot]); assert.equal(unwritable.code, 1); assert.equal(unwritable.stdout, ""); assert.match(unwritable.stderr, /^prior-state-error:/); assert.equal(await readFile(outside, "utf8"), "marker");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -129,10 +129,10 @@ test("final security remediation: oversized file and stdin are exact failures an
   const cwd = await mkdtemp(path.join(os.tmpdir(), "lookout-cli-bounded-"));
   try {
     await writeFile(path.join(cwd, "lookout.sources.json"), JSON.stringify({ version: 1, sources: [source("alpha")] })); await writeFile(path.join(cwd, "one.json"), JSON.stringify(observationDocument("snapshot-1", "old")));
-    const first = await runLookout(cwd, ["emit-survey", "alpha", "--observation", "one.json"]); assert.equal(first.code, 0);
+    const first = await runLookout(cwd, ["emit-drift", "alpha", "--observation", "one.json"]); assert.equal(first.code, 0);
     const stateRoot = path.join(cwd, ".kontourai", "lookout", "observations"); const sourceDir = path.join(stateRoot, (await readdir(stateRoot))[0]!); const pointerPath = path.join(sourceDir, "latest.json"); const before = await readFile(pointerPath);
     const oversized = " ".repeat(1024 * 1024 + 1); await writeFile(path.join(cwd, "large.json"), oversized);
-    for (const [argv, stdin] of [[["emit-survey", "alpha", "--observation", "large.json"], undefined], [["emit-survey", "alpha", "--observation", "-"], oversized]] as const) {
+    for (const [argv, stdin] of [[["emit-drift", "alpha", "--observation", "large.json"], undefined], [["emit-drift", "alpha", "--observation", "-"], oversized]] as const) {
       const result = await runLookout(cwd, [...argv], stdin); assert.deepEqual(result, { code: 1, stdout: "", stderr: "Could not read observation: observation exceeds 1048576 bytes\n" }); assert.deepEqual(await readFile(pointerPath), before);
     }
     const sourceText = await readFile(path.join(process.cwd(), "src", "cli.ts"), "utf8"); assert.doesNotMatch(sourceText, /readFile\(file/); assert.match(sourceText, /maxBytes \+ 1/);
