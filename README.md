@@ -129,6 +129,33 @@ default at `<cwd>/.kontourai/lookout/snapshots` (override with the CLI
 `--snapshot-root` flag or by injecting a store in library use). Lookout adds no
 custom filenames or retention.
 
+## Schema coverage
+
+Drift isn't only "the bytes changed" — a source can reformat so that a field
+your schema *declares* silently stops being produced. The byte/proposal diffs
+above are temporal (they need a prior and say nothing on a first look), so they
+can't catch this. `checkSchemaCoverage` is the static complement:
+
+```ts
+import { checkSchemaCoverage } from "@kontourai/lookout";
+
+const { covered, gaps } = checkSchemaCoverage(source.targetSchema, proposals);
+// covered: declared paths at least one proposal produced (schema order)
+// gaps:    declared paths that produced none, each with its `required` flag
+for (const gap of gaps) {
+  // escalate a missing required field harder than a missing optional one
+}
+```
+
+It reduces one declared `TargetFieldSchema[]` and one produced
+`ExtractionProposal[]` set into `{ covered, gaps }` by exact
+`proposal.fieldPath === field.path`. It is pure and total — no prior, no
+network, no throw — and answers on the very first observation. It measures the
+produced set you pass (it runs no post-verification filtering itself), reports
+only against the *declared* surface (an undeclared proposal path is neither
+covered nor a gap), and preserves schema order. Escalation — warning, review
+item, or hard failure — is the consumer's call.
+
 ## CLI
 
 ```
