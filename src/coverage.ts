@@ -6,6 +6,13 @@ import type { ExtractionProposal, TargetFieldSchema } from "@kontourai/traverse"
  * declared `path`. `required` mirrors the schema field's own `required` flag
  * (absent → `false`) so a consumer can escalate a missing required field harder
  * than a missing optional one.
+ *
+ * The gap keys the declared field under `fieldPath` (not `path`) deliberately:
+ * it is the same string as the schema field's `path`, but named to line up with
+ * `ExtractionProposal.fieldPath` so a consumer can correlate a gap directly
+ * against the proposals it was measured over. `covered` needs no such wrapper —
+ * it carries neither the `required` flag nor a correlation need — so it stays a
+ * bare `string[]` of declared paths.
  */
 export interface SchemaCoverageGap {
   readonly fieldPath: string;

@@ -104,3 +104,15 @@ test("a schema that repeats a declared path reports it once per occurrence", () 
     { fieldPath: "dup", required: true },
   ]);
 });
+
+test("a produced, repeated declared path lists covered once per occurrence too", () => {
+  const result = checkSchemaCoverage(
+    [
+      { path: "dup", type: "string" },
+      { path: "dup", type: "string", required: true },
+    ],
+    [proposal("dup")],
+  );
+  assert.deepEqual(result.covered, ["dup", "dup"]);
+  assert.deepEqual(result.gaps, []);
+});
