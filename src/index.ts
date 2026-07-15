@@ -61,5 +61,5 @@ export type {
 } from "./proposal-diff.js";
 export { createObservationStore } from "./observation-store.js";
 export type { CreateObservationStoreOptions, ObservationCheckAnchor, ObservationStore, ObservationStoreError, ObservationStoreErrorKind, ObservationStoreResult, ProposalObservationRecordInput, StoredProposalObservationV1 } from "./observation-store.js";
-export { createSurveyEmitter } from "./survey-emission.js";
-export type { BaselineEstablishedFact, CreateSurveyEmitterOptions, EmissionError, EmissionErrorKind, EmissionFact, EmissionResult, EmissionSuccess, EmitSurveyInput, SurveyEmitter } from "./survey-emission.js";
+export { createDriftEmitter } from "./drift-emission.js";
+export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput } from "./drift-emission.js";
