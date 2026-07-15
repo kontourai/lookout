@@ -3,10 +3,13 @@
 Lookout is `@kontourai/lookout`, a source registry and drift-check runner built
 on Traverse snapshots. Given a registry of sources and a snapshot store, it
 answers whether a source drifted, can deterministically compare caller-produced
-proposal observations, and can author unreviewed Survey inputs. It composes
-Traverse for fetch and snapshots and Survey for record authoring. Extraction,
-Surface projection, authority policy, notification, and scheduling remain
-external. Public operational entrypoints return typed results rather than
+proposal observations, and emits that comparison as neutral, typed drift in its
+own vocabulary. It composes Traverse for fetch and snapshots and depends on
+nothing in the trust layer — its events are already Hachure-evidence-shaped, but
+lifting them into a Hachure `TrustBundle` (via `@kontourai/surface`'s
+`TrustBundleBuilder`) is a consumer/product responsibility, not Lookout's.
+Extraction, Surface projection, authority policy, notification, and scheduling
+remain external. Public operational entrypoints return typed results rather than
 throwing.
 
 ## Term Glossary
@@ -64,19 +67,22 @@ throwing.
   check anchors, atomically advances one per-source pointer, and retains the two
   newest valid committed observations. Missing means first run; corruption is a
   typed error and never an empty baseline.
-- **Survey emission** (`SurveyEmitter`): compares a genuine stored prior with a
-  current caller-produced proposal observation and authors one proposed Survey
-  claim per L2 event. Registry kind supplies origin, resolution is always
-  `observation`, and authorization is absent. First observation produces a
-  baseline fact, no events, and no SurveyInput.
-- **Consumer projection**: passing an authored SurveyInput to Survey's Surface
-  projection API is a consumer responsibility. Lookout neither imports Surface
-  nor chooses review, supersession, precedence, or carry-forward policy.
+- **Drift emission** (`DriftEmitter`): compares a genuine stored prior with a
+  current caller-produced proposal observation and emits one neutral
+  `DriftFact`/`ProposalDiffEvent` set per comparison — `events`, `facts`, and a
+  `priorObservationId` (`null` on the first-ever observation). Registry kind
+  supplies fact `origin`; resolution is always `observation`. First observation
+  produces a `baseline-established` fact, no events, and a null
+  `priorObservationId`.
+- **Consumer projection**: lifting emitted drift events into a Hachure
+  `TrustBundle` (via `@kontourai/surface`'s `TrustBundleBuilder`) is a
+  consumer/product responsibility. Lookout imports nothing from the trust layer
+  and chooses no review, supersession, precedence, or carry-forward policy.
 
 ## Boundary
 
 Lookout owns the registry, drift classification, deterministic proposal diff,
-proposal-observation continuity, unreviewed SurveyInput authoring, and JSONL
-commands. Traverse owns fetching and snapshots. Survey owns its input builder
-and projection contract. Extraction, Surface projection, notification,
-crawling, review/authority policy, and scheduling remain external.
+proposal-observation continuity, neutral drift emission, and JSONL commands.
+Traverse owns fetching and snapshots. Extraction, trust-bundle authoring,
+Surface projection, notification, crawling, review/authority policy, and
+scheduling remain external.

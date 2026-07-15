@@ -5,7 +5,7 @@ import { createCheckRunner, type CheckRunner } from "./check-runner.js";
 import { loadRegistry, type LookoutRegistry } from "./registry.js";
 import { createLookoutSnapshotStore } from "./snapshot-store.js";
 import { createObservationStore } from "./observation-store.js";
-import { createSurveyEmitter, type EmissionResult } from "./survey-emission.js";
+import { createDriftEmitter, type DriftResult } from "./drift-emission.js";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 
 export interface RunCliOptions {
@@ -15,7 +15,7 @@ export interface RunCliOptions {
   loadRegistry?: (path?: string) => Promise<LookoutRegistry>;
   runner?: CheckRunner;
   readObservation?: (path: string) => Promise<unknown>;
-  emitSurvey?: (sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string) => Promise<EmissionResult>;
+  emitDrift?: (sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string) => Promise<DriftResult>;
 }
 
 export async function runCli(options: RunCliOptions = {}): Promise<number> {
@@ -37,13 +37,13 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 1;
   }
 
-  if (parsed.command === "emit-survey") {
+  if (parsed.command === "emit-drift") {
     const source = registry.get(parsed.id);
     if (!source) { stderr.write(`Unknown source id: ${parsed.id}\n`); return 1; }
     let value: unknown;
     try { value = await (options.readObservation ?? readObservation)(parsed.observationPath); }
     catch (error) { stderr.write(`Could not read observation: ${error instanceof Error ? error.message : String(error)}\n`); return 1; }
-    const result = await (options.emitSurvey ?? emitSurvey)(parsed.id, value, registry, parsed.observationRoot);
+    const result = await (options.emitDrift ?? emitDrift)(parsed.id, value, registry, parsed.observationRoot);
     if (!result.ok) { stderr.write(`${result.error.kind}: ${result.error.message}\n`); return 1; }
     stdout.write(`${JSON.stringify(result.value)}\n`);
     return 0;
@@ -75,12 +75,12 @@ interface ParsedCheckArgs {
   registryPath?: string;
   snapshotRoot?: string;
 }
-interface ParsedEmitArgs { command: "emit-survey"; id: string; registryPath?: string; observationPath: string; observationRoot?: string }
+interface ParsedEmitArgs { command: "emit-drift"; id: string; registryPath?: string; observationPath: string; observationRoot?: string }
 type ParsedArgs = ParsedCheckArgs | ParsedEmitArgs;
 
 function parseArgs(argv: string[]): ParsedArgs | string {
-  if (argv[0] === "emit-survey") return parseEmitArgs(argv);
-  if (argv[0] !== "check") return "Usage: lookout check <id>|--all [--registry path] [--snapshot-root path]\n       lookout emit-survey <id> --observation <path|-> [--registry path] [--observation-root path]";
+  if (argv[0] === "emit-drift") return parseEmitArgs(argv);
+  if (argv[0] !== "check") return "Usage: lookout check <id>|--all [--registry path] [--snapshot-root path]\n       lookout emit-drift <id> --observation <path|-> [--registry path] [--observation-root path]";
   const parsed: ParsedCheckArgs = { command: "check", all: false };
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -116,9 +116,9 @@ function parseEmitArgs(argv: string[]): ParsedEmitArgs | string {
     } else if (arg.startsWith("--")) return `Unknown option: ${arg}`;
     else if (id) return "Only one source id may be emitted at a time"; else id = arg;
   }
-  if (!id) return "emit-survey requires a source id";
-  if (!observationPath) return "emit-survey requires --observation <path|->";
-  return { command: "emit-survey", id, observationPath, registryPath, observationRoot };
+  if (!id) return "emit-drift requires a source id";
+  if (!observationPath) return "emit-drift requires --observation <path|->";
+  return { command: "emit-drift", id, observationPath, registryPath, observationRoot };
 }
 
 async function readObservation(file: string): Promise<unknown> {
@@ -147,9 +147,9 @@ function cliEntities(observation: ProposalSetObservation): readonly CliEntity[] 
   }
   return [...grouped].map(([key, proposals]) => ({ key, proposals }));
 }
-async function emitSurvey(sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string): Promise<EmissionResult> {
+async function emitDrift(sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string): Promise<DriftResult> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: { kind: "invalid-input", message: "Observation document must be an object" } };
   const document = value as { observation?: ProposalSetObservation; check?: import("./observation-store.js").ObservationCheckAnchor };
   const source = registry.get(sourceId)!;
-  return createSurveyEmitter<CliEntity>({ store: createObservationStore({ root: observationRoot }) }).emit({ source, current: document.observation as ProposalSetObservation, check: document.check as import("./observation-store.js").ObservationCheckAnchor, callbacks: { selectEntities: cliEntities, entityIdentity: (entity) => entity.key, proposalsFor: (entity) => entity.proposals, fieldIdentity: (_entity, proposal) => proposal.fieldPath } });
+  return createDriftEmitter<CliEntity>({ store: createObservationStore({ root: observationRoot }) }).emit({ source, current: document.observation as ProposalSetObservation, check: document.check as import("./observation-store.js").ObservationCheckAnchor, callbacks: { selectEntities: cliEntities, entityIdentity: (entity) => entity.key, proposalsFor: (entity) => entity.proposals, fieldIdentity: (_entity, proposal) => proposal.fieldPath } });
 }
