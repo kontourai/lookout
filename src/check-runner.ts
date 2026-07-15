@@ -3,17 +3,35 @@ import {
   fetchSource as traverseFetchSource,
 } from "@kontourai/traverse/fetch";
 import type {
+  FetchLike,
   FetchResult,
   FetchSourceOptions,
   Snapshot,
   SnapshotStore,
   SourceConfig,
 } from "@kontourai/traverse/fetch";
+import { createGuardedFetch } from "@kontourai/forage/egress";
 import type { CheckResult, CheckResultCommon, LookoutErrorKind } from "./check-result.js";
 import type { ProviderResolver } from "./provider-resolution.js";
 import type { LookoutSource } from "./registry.js";
 
 export type FetchSource = (config: SourceConfig, options?: FetchSourceOptions) => Promise<FetchResult>;
+
+/**
+ * The default egress transport for lookout's registered-source fetches: forage's
+ * SSRF-pinned guarded fetch. Registered source URLs are operator- / aggregator-
+ * supplied and not fully trusted, so a source pointing at a private, link-local,
+ * loopback, or cloud-metadata host is refused before any connection — a drift
+ * check can never be turned into an SSRF vector. Only wired when lookout uses the
+ * default traverse fetcher and the caller injected no `fetch`; a caller that
+ * supplies its own `fetchSource` or `fetchOptions.fetch` (e.g. tests) owns the
+ * transport. Created lazily and cached so the guard is built once, not per check.
+ */
+let cachedGuardedFetch: FetchLike | undefined;
+function defaultGuardedFetch(): FetchLike {
+  cachedGuardedFetch ??= createGuardedFetch() as unknown as FetchLike;
+  return cachedGuardedFetch;
+}
 
 export interface CreateCheckRunnerOptions {
   store: SnapshotStore;
@@ -30,8 +48,16 @@ export interface CheckRunner {
 }
 
 export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunner {
+  const usingDefaultFetcher = options.fetchSource === undefined;
   const fetchImpl = options.fetchSource ?? traverseFetchSource;
   const clock = options.clock ?? (() => new Date().toISOString());
+
+  // Guard the default traverse fetcher's egress with forage. A caller-supplied
+  // fetcher or `fetchOptions.fetch` owns its own transport and is left as-is.
+  const fetchOptions: Omit<FetchSourceOptions, "store"> = { ...options.fetchOptions };
+  if (usingDefaultFetcher && fetchOptions.fetch === undefined) {
+    fetchOptions.fetch = defaultGuardedFetch();
+  }
 
   async function check(source: LookoutSource): Promise<CheckResult> {
     const common = (): CheckResultCommon => ({
@@ -52,7 +78,7 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
     try {
       fetched = await fetchImpl(
         { id: source.id, url: source.url, revalidate: true },
-        { ...options.fetchOptions, store: options.store },
+        { ...fetchOptions, store: options.store },
       );
     } catch (error) {
       return lookoutError(common(), "unexpected", error);

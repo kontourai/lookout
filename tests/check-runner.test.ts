@@ -52,6 +52,24 @@ test("AC3 changed body returns changed with resolvable prior and current refs", 
   assert.equal((await store.get("alpha", currentRef?.bodyHash ?? "missing"))?.body, "new");
 });
 
+test("registered-source SSRF: a link-local/metadata target is refused by the default guarded egress", async () => {
+  const store = memoryStore();
+  // No fetchSource / fetchOptions.fetch injected → the forage-guarded default
+  // transport. 169.254.169.254 is link-local, so the guard denies it before any
+  // connection (no DNS, deterministic). The drift check surfaces a typed traverse
+  // error rather than fetching an internal endpoint — a registered source can
+  // never be turned into an SSRF vector.
+  // Silence retry backoff timers only — `fetch` stays defaulted to the guard.
+  const result = await createCheckRunner({
+    store,
+    fetchOptions: { sleep: async () => {}, random: () => 0 },
+  }).check(source("metadata", { url: "http://169.254.169.254/latest/meta-data/" }));
+  assert.equal(result.kind, "error");
+  if (result.kind !== "error") return;
+  assert.equal(result.origin, "traverse");
+  assert.equal(store.puts.length, 0);
+});
+
 test("AC4 traverse network error is preserved and check never rejects", async () => {
   const error = { kind: "network" as const, message: "connection reset" };
   const result = await createCheckRunner({ store: memoryStore(), fetchSource: async () => ({ error }) }).check(source());
