@@ -63,3 +63,5 @@ export { createObservationStore } from "./observation-store.js";
 export type { CreateObservationStoreOptions, ObservationCheckAnchor, ObservationStore, ObservationStoreError, ObservationStoreErrorKind, ObservationStoreResult, ProposalObservationRecordInput, StoredProposalObservationV1 } from "./observation-store.js";
 export { createSurveyEmitter } from "./survey-emission.js";
 export type { BaselineEstablishedFact, CreateSurveyEmitterOptions, EmissionError, EmissionErrorKind, EmissionFact, EmissionResult, EmissionSuccess, EmitSurveyInput, SurveyEmitter } from "./survey-emission.js";
+export { checkSchemaCoverage } from "./coverage.js";
+export type { SchemaCoverageGap, SchemaCoverageResult } from "./coverage.js";
