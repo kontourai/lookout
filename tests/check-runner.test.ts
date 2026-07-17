@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseSnapshotSourceRef } from "@kontourai/traverse/fetch";
-import type { FetchResult, SnapshotStore } from "@kontourai/traverse/fetch";
+import { parseSnapshotSourceRef } from "@kontourai/forage/fetch";
+import type { FetchResult, SnapshotStore } from "@kontourai/forage/fetch";
 import { createCheckRunner } from "../src/check-runner.js";
 import { memoryStore, snapshot, source } from "./helpers.js";
 
@@ -20,7 +20,7 @@ test("AC1 --all returns one ordered result per registered source and stores both
 });
 
 test("AC2 validator recheck returns unchanged-304 and never reads the 304 body", async () => {
-  const prior = snapshot("alpha", "prior", { etag: '"v1"' });
+  const prior = snapshot("alpha", "prior", { headers: { etag: '"v1"' } });
   const served = { ...prior, fromCache: true, notModified: true };
   Object.defineProperty(served, "body", { get() { throw new Error("304 body was read"); }, enumerable: true });
   const store = memoryStore([prior]);
@@ -158,7 +158,7 @@ test("renderPolicy is inert registry data during L1 checks", async () => {
     fetchSource: async (config) => { configs.push(config); return { snapshot: snapshot(config.id, "body") }; },
   });
   await runner.check(source("alpha", { renderPolicy: "always" }));
-  assert.deepEqual(configs, [{ id: "alpha", url: "https://example.test/alpha", revalidate: true }]);
+  assert.deepEqual(configs, [{ id: "alpha", url: "https://example.test/alpha", egress: { guarded: true } }]);
 });
 
 test("L1 check does not invoke the datum resolver", async () => {

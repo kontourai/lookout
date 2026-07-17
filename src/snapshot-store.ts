@@ -1,6 +1,6 @@
 import path from "node:path";
-import { createFilesystemSnapshotStore } from "@kontourai/traverse/fetch";
-import type { SnapshotStore } from "@kontourai/traverse/fetch";
+import { createFilesystemSnapshotStore } from "@kontourai/forage";
+import type { SnapshotStore } from "@kontourai/forage";
 
 export function createLookoutSnapshotStore(
   root = path.join(process.cwd(), ".kontourai", "lookout", "snapshots"),

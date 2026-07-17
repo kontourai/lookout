@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Snapshot, SnapshotStore } from "@kontourai/traverse/fetch";
+import type { Snapshot, SnapshotStore } from "@kontourai/forage";
 import type { LookoutSource } from "../src/registry.js";
 
 export function source(id = "source-a", overrides: Partial<LookoutSource> = {}): LookoutSource {
@@ -24,7 +24,6 @@ export function snapshot(
     url: `https://example.test/${sourceId}`,
     fetchedAt: "2026-07-10T12:00:00.000Z",
     status: 200,
-    contentType: "text",
     body,
     bodyHash: createHash("sha256").update(body, "utf8").digest("hex"),
     ...overrides,
