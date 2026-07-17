@@ -1,4 +1,4 @@
-import type { FetchError } from "@kontourai/traverse/fetch";
+import type { FetchError } from "@kontourai/forage/fetch";
 
 export interface CheckResultCommon {
   sourceId: string;
