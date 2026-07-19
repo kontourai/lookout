@@ -21,6 +21,8 @@ import type {
   ProposalSetDiff,
   ProposalSetObservation,
   StructuralComparison,
+  LookoutSource,
+  StructuredFileLookoutSource,
 } from "../../src/index.js";
 
 const proposal: ExtractionProposal = {
@@ -83,4 +85,19 @@ const change: FieldChangedEvent = {
 const optionalChangeSides: readonly unknown[] = [change.prior, change.current];
 const events: readonly ProposalDiffEvent[] = [appearance, change];
 
-void [canonicalKey, canonicalFormat, canonicalError, exactIdentity, structural, multiset, proposalDiff, events, optionalChangeSides];
+const structuredSource: StructuredFileLookoutSource = {
+  id: "published-results",
+  kind: "structured-file",
+  format: "json",
+  url: "https://example.test/results.json",
+  cadenceHint: "daily",
+};
+const sourceUnion: LookoutSource = structuredSource;
+// @ts-expect-error Structured files cannot carry extraction or render fields.
+const invalidStructuredSource: LookoutSource = {
+  ...structuredSource,
+  targetSchema: [],
+  renderPolicy: "never",
+};
+
+void [canonicalKey, canonicalFormat, canonicalError, exactIdentity, structural, multiset, proposalDiff, events, optionalChangeSides, sourceUnion, invalidStructuredSource];

@@ -20,10 +20,12 @@ Traverse snapshots. The decisions that shape the observable contract:
 - **Versioned JSON registry.** Sources live in a `{ version: 1, sources: [...] }`
   document (default `<cwd>/lookout.sources.json`, overridable by library path or
   CLI `--registry`). No YAML dependency. Each `LookoutSource` carries `id`,
-  `kind` (`web-page` | `api-record`), an absolute HTTP(S) `url`, a Traverse
-  `TargetFieldSchema[]` `targetSchema`, a `cadenceHint`, and a `renderPolicy`.
-  Validation reports every deterministic issue at once with index/id context and
-  never touches the network.
+  `kind` (`web-page` | `api-record` | `structured-file`), an absolute HTTP(S)
+  `url`, and a `cadenceHint`. Web/API sources carry a Traverse
+  `TargetFieldSchema[]` plus `renderPolicy`; structured files instead require a
+  `format` discriminator (`yaml` | `json` | `csv`) and retain raw bytes for
+  downstream parsing. Validation reports every deterministic issue at once with
+  index/id context and never touches the network.
 
 - **Four result kinds.** A check classifies into exactly one of `unchanged-304`,
   `unchanged-hash`, `changed`, or `error`. There is no fifth "initial" variant:
@@ -64,10 +66,10 @@ Traverse snapshots. The decisions that shape the observable contract:
   `error` results); non-zero only when an invocation/registry failure prevents
   producing the requested result set. Cadence/scheduling stays external (boo).
 
-- **Inert render policy.** `renderPolicy` is validated registry data this slice;
-  L1 never translates it (or `kind`) into a fetch/render policy and never adds
-  retries/robots/redirects — those remain Traverse's. Render wiring waits on
-  traverse#50.
+- **Inert render policy.** `renderPolicy` is validated registry data for web/API
+  sources; structured files do not carry it. L1 never translates it (or `kind`)
+  into a fetch/render policy and never adds retries/robots/redirects — those
+  remain Traverse's. Render wiring waits on traverse#50.
 
 - **Traverse pin gate.** Trustworthy `unchanged-304` requires the validator
   scoping fix from traverse#49; L1 exact-pins `@kontourai/traverse@0.14.1` (the

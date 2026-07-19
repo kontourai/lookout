@@ -53,6 +53,66 @@ test("registry rejects non-http URLs without reading the network", () => {
   }
 });
 
+test("registry accepts structured files with an explicit supported format", () => {
+  const registry = parseRegistry({
+    version: 1,
+    sources: [{
+      id: "benchmark-snapshot",
+      kind: "structured-file",
+      format: "yaml",
+      url: "https://raw.githubusercontent.com/example/project/0123456789abcdef0123456789abcdef01234567/results.yml",
+      cadenceHint: "weekly",
+    }],
+  });
+  assert.deepEqual(registry.get("benchmark-snapshot"), {
+    id: "benchmark-snapshot",
+    kind: "structured-file",
+    format: "yaml",
+    url: "https://raw.githubusercontent.com/example/project/0123456789abcdef0123456789abcdef01234567/results.yml",
+    cadenceHint: "weekly",
+  });
+});
+
+test("registry rejects unsupported or cross-kind structured-file fields", () => {
+  assert.throws(
+    () => parseRegistry({
+      version: 1,
+      sources: [{
+        id: "bad-structured-file",
+        kind: "structured-file",
+        format: "toml",
+        url: "https://example.test/results.toml",
+        cadenceHint: "daily",
+        targetSchema: [],
+        renderPolicy: "never",
+      }],
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof RegistryValidationError);
+      assert.match(error.message, /format must be "yaml", "json", or "csv"/);
+      assert.match(error.message, /targetSchema is not allowed/);
+      assert.match(error.message, /renderPolicy is not allowed/);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseRegistry({ version: 1, sources: [validSource("wrong-kind-field", { format: "json" })] }),
+    /format is only allowed for structured-file/,
+  );
+  assert.throws(
+    () => parseRegistry({
+      version: 1,
+      sources: [validSource("invalid-kind-format", { kind: "feed", format: "json" })],
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof RegistryValidationError);
+      assert.match(error.message, /kind must be/);
+      assert.match(error.message, /format is only allowed for structured-file/);
+      return true;
+    },
+  );
+});
+
 function validSource(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
