@@ -28,7 +28,12 @@ export type {
   StructuredFileFormat,
   StructuredFileLookoutSource,
 } from "./registry.js";
-export { createLookoutSnapshotStore } from "./snapshot-store.js";
+export {
+  createLookoutSnapshotStore,
+  resolveLookoutSnapshot,
+} from "./snapshot-store.js";
+export type { ResolveLookoutSnapshotOptions } from "./snapshot-store.js";
+export type { SnapshotSourceRefResolution } from "@kontourai/forage/fetch";
 export { canonicalValueKey } from "./canonical-value.js";
 export type {
   CanonicalValueKey,

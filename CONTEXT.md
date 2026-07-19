@@ -1,10 +1,11 @@
 # Lookout Context
 
 Lookout is `@kontourai/lookout`, a source registry and drift-check runner built
-on Traverse snapshots. Given a registry of sources and a snapshot store, it
+on Forage snapshots. Given a registry of sources and a snapshot store, it
 answers whether a source drifted, can deterministically compare caller-produced
 proposal observations, and emits that comparison as neutral, typed drift in its
-own vocabulary. It composes Traverse for fetch and snapshots and depends on
+own vocabulary. It composes Forage for fetch and snapshots, Traverse for
+schema/proposal types, and depends on
 nothing in the trust layer — its events are already Hachure-evidence-shaped, but
 lifting them into a Hachure `TrustBundle` (via `@kontourai/surface`'s
 `TrustBundleBuilder`) is a consumer/product responsibility, not Lookout's.
@@ -27,23 +28,22 @@ throwing.
   every deterministic issue at once and never reads the network.
 - **Render Policy** (`renderPolicy`): `never` | `on-shell-warning` | `always`,
   validated registry data that is **inert at L1** — it is never translated into a
-  Traverse fetch/render policy. Render wiring is deferred (traverse#50).
+  Forage fetch/render policy. Render wiring remains deferred.
 - **Check**: one drift observation for a source. Its exact order is: read the
   prior snapshot → `fetchSource` with `revalidate: true` against the same store →
   validate the dependency result → classify → persist the fresh snapshot before
   reporting success → emit provenance. Lookout owns the prior-vs-fresh `bodyHash`
-  comparison; Traverse only computes a fresh hash and only reads the store.
+  comparison; Forage computes a fresh hash and only reads the store.
 - **Snapshot Reference** (`snapshotRef` / `priorSnapshotRef` /
-  `currentSnapshotRef`): a portable logical ref from Traverse's
+  `currentSnapshotRef`): a portable logical ref from Forage's
   `buildSnapshotSourceRef`, never a filesystem path. `unchanged-304` carries one
   ref; fresh comparisons carry both prior and current refs.
 - **Check Result** (`CheckResult`): the discriminated result of a check — exactly
   one of four kinds, each carrying `sourceId`, registered `sourceUrl`,
-  `checkedAt`, and Traverse `warnings`:
+  `checkedAt`, and Forage fetch warnings:
   - **`unchanged-304`**: a validator-backed conditional request returned `304`;
     the prior snapshot was re-served with zero body transfer and is not
-    re-persisted. Trustworthy only with the traverse#49 validator-scoping fix
-    (`@kontourai/traverse` `>= 0.14.1`).
+    re-persisted. Trustworthy only with Forage's validator-scoped revalidation.
   - **`unchanged-hash`**: a full body was fetched and persisted, but its sha256
     `bodyHash` equals the prior snapshot's — no drift, established by L1's own
     comparison.
@@ -51,13 +51,15 @@ throwing.
     (`changeBasis: "hash"`), or it is the **first successful observation**
     (`changeBasis: "initial"` with a null prior ref).
   - **`error`**: an operational failure, contained so the runner never rejects —
-    `origin: "traverse"` preserving a Traverse `FetchError` discriminant, or
+    `origin: "forage"` preserving a Forage `FetchError` discriminant, or
     `origin: "lookout"` with a typed kind (`prior-read` | `persistence` |
     `dependency-contract` | `unexpected`).
 - **Snapshot Store** (`createLookoutSnapshotStore`): a thin wrapper over
-  Traverse's filesystem snapshot store, rooted by default at
+  Forage's filesystem snapshot store, rooted by default at
   `<cwd>/.kontourai/lookout/snapshots` with an injectable root. Lookout adds no
-  custom filenames, retention, or storage policy.
+  custom filenames, retention, or storage policy. `resolveLookoutSnapshot`
+  resolves and authenticates one exact durable reference offline through this
+  store boundary.
 - **Provider Resolver** (`ProviderResolver`): a Datum `resolve` capability
   threaded into the runner for L2. L1 accepts it but **never invokes it** —
   resolving would materialize secrets for no purpose this slice.
@@ -83,6 +85,7 @@ throwing.
 
 Lookout owns the registry, drift classification, deterministic proposal diff,
 proposal-observation continuity, neutral drift emission, and JSONL commands.
-Traverse owns fetching and snapshots. Extraction, trust-bundle authoring,
+Forage owns fetching, snapshot storage, and durable reference integrity;
+Traverse owns extraction. Trust-bundle authoring,
 Surface projection, notification, crawling, review/authority policy, and
 scheduling remain external.

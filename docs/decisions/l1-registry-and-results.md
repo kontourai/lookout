@@ -8,14 +8,16 @@ evidence:
   - kind: doc
     ref: CONTEXT.md
   - kind: url
-    ref: https://github.com/kontourai/traverse/issues/49
+    ref: https://github.com/kontourai/forage/issues/15
+  - kind: url
+    ref: https://github.com/kontourai/lookout/issues/19
 ---
 # L1 source registry, drift classification, and result contract
 
 ## Decision
 
 Lookout L1 is a source registry plus a non-throwing drift-check runner over
-Traverse snapshots. The decisions that shape the observable contract:
+Forage snapshots. The decisions that shape the observable contract:
 
 - **Versioned JSON registry.** Sources live in a `{ version: 1, sources: [...] }`
   document (default `<cwd>/lookout.sources.json`, overridable by library path or
@@ -33,7 +35,7 @@ Traverse snapshots. The decisions that shape the observable contract:
   and a null prior ref**, which keeps the union closed while staying honest that
   nothing preceded it.
 
-- **L1 owns comparison and persistence.** Traverse's `fetchSource` only reads the
+- **L1 owns comparison and persistence.** Forage's `fetchSource` only reads the
   store and computes a fresh `bodyHash`; it never persists a fresh 200 and never
   compares hashes. L1's exact order per source is: load the prior snapshot →
   `fetchSource({ ..., revalidate: true }, { store })` → validate the dependency
@@ -47,13 +49,15 @@ Traverse snapshots. The decisions that shape the observable contract:
   returned after the required `store.put` resolves, so every emitted provenance
   ref is replayable.
 
-- **Logical snapshot refs, never paths.** Provenance uses Traverse's
+- **Logical snapshot refs, never paths.** Provenance uses Forage's
   `buildSnapshotSourceRef` (`unchanged-304` carries one ref; fresh comparisons
-  carry both prior and current refs). Paths are never exposed.
+  carry both prior and current refs). Paths are never exposed. Exact replay
+  delegates to Forage's `resolveSnapshotSourceRef`, which authenticates the
+  referenced body and durable replay metadata without fetching.
 
 - **The runner never throws (R2).** Operational failures become typed results,
-  not exceptions: a Traverse `FetchError` is preserved with its discriminant
-  under `origin: "traverse"`; a rejected store read/write, a throwing injected
+  not exceptions: a Forage `FetchError` is preserved with its discriminant
+  under `origin: "forage"`; a rejected store read/write, a throwing injected
   fetch, a malformed dependency result, or any unexpected exception becomes an
   `origin: "lookout"` error (`prior-read` | `persistence` | `dependency-contract`
   | `unexpected`). `checkAll` runs sources sequentially, returns one ordered
@@ -69,11 +73,13 @@ Traverse snapshots. The decisions that shape the observable contract:
 - **Inert render policy.** `renderPolicy` is validated registry data for web/API
   sources; structured files do not carry it. L1 never translates it (or `kind`)
   into a fetch/render policy and never adds retries/robots/redirects — those
-  remain Traverse's. Render wiring waits on traverse#50.
+  remain Forage's. Render wiring remains deferred.
 
-- **Traverse pin gate.** Trustworthy `unchanged-304` requires the validator
-  scoping fix from traverse#49; L1 exact-pins `@kontourai/traverse@0.14.1` (the
-  first release containing it). `>= 0.14.1` is the documented floor.
+- **Dependency gates.** Exact replay requires `@kontourai/forage >= 0.4.0`, the
+  first release containing canonical durable-reference resolution. Forage also
+  owns validator-scoped revalidation for trustworthy `unchanged-304` results.
+  Lookout exact-pins `@kontourai/traverse@0.14.1` separately for its schema and
+  extraction-proposal contracts.
 
 ## Boundary
 
