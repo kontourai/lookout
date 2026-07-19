@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import type { Snapshot, SnapshotStore } from "@kontourai/forage";
-import type { LookoutSource } from "../src/registry.js";
+import type { ExtractableLookoutSource } from "../src/registry.js";
 
-export function source(id = "source-a", overrides: Partial<LookoutSource> = {}): LookoutSource {
+export function source(
+  id = "source-a",
+  overrides: Partial<ExtractableLookoutSource> = {},
+): ExtractableLookoutSource {
   return {
     id,
     kind: "web-page",

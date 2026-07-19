@@ -2,17 +2,31 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { TargetFieldSchema } from "@kontourai/traverse";
 
-export type LookoutSourceKind = "web-page" | "api-record";
+export type LookoutSourceKind = "web-page" | "api-record" | "structured-file";
+export type StructuredFileFormat = "yaml" | "json" | "csv";
 export type RenderPolicy = "never" | "on-shell-warning" | "always";
 
-export interface LookoutSource {
+interface LookoutSourceBase {
   id: string;
-  kind: LookoutSourceKind;
   url: string;
-  targetSchema: TargetFieldSchema[];
   cadenceHint: string;
-  renderPolicy: RenderPolicy;
 }
+
+export interface ExtractableLookoutSource extends LookoutSourceBase {
+  kind: "web-page" | "api-record";
+  targetSchema: TargetFieldSchema[];
+  renderPolicy: RenderPolicy;
+  format?: never;
+}
+
+export interface StructuredFileLookoutSource extends LookoutSourceBase {
+  kind: "structured-file";
+  format: StructuredFileFormat;
+  targetSchema?: never;
+  renderPolicy?: never;
+}
+
+export type LookoutSource = ExtractableLookoutSource | StructuredFileLookoutSource;
 
 export interface LookoutRegistryDocument {
   version: 1;
@@ -76,58 +90,160 @@ export function parseRegistry(value: unknown): LookoutRegistry {
   const ids = new Map<string, number>();
   const sources: LookoutSource[] = [];
   value.sources.forEach((candidate, index) => {
-    const context = `sources[${index}]`;
-    if (!isRecord(candidate)) {
-      issues.push(`${context} must be an object`);
-      return;
-    }
-    const id = candidate.id;
-    const label = typeof id === "string" && id.trim() ? `${context} (id "${id}")` : context;
-    if (typeof id !== "string" || id.trim() === "") {
-      issues.push(`${context}.id must be a non-empty string`);
-    } else {
-      const first = ids.get(id);
-      if (first !== undefined) issues.push(`${label}.id duplicates sources[${first}].id`);
-      else ids.set(id, index);
-    }
-    if (candidate.kind !== "web-page" && candidate.kind !== "api-record") {
-      issues.push(`${label}.kind must be "web-page" or "api-record"`);
-    }
-    if (!isHttpUrl(candidate.url)) {
-      issues.push(`${label}.url must be an absolute HTTP(S) URL`);
-    }
-    if (typeof candidate.cadenceHint !== "string" || candidate.cadenceHint.trim() === "") {
-      issues.push(`${label}.cadenceHint must be a non-empty string`);
-    }
-    if (
-      candidate.renderPolicy !== "never" &&
-      candidate.renderPolicy !== "on-shell-warning" &&
-      candidate.renderPolicy !== "always"
-    ) {
-      issues.push(`${label}.renderPolicy must be "never", "on-shell-warning", or "always"`);
-    }
-    validateTargetSchema(candidate.targetSchema, label, issues);
-
-    if (
-      typeof id === "string" && id.trim() !== "" &&
-      (candidate.kind === "web-page" || candidate.kind === "api-record") &&
-      isHttpUrl(candidate.url) &&
-      typeof candidate.cadenceHint === "string" && candidate.cadenceHint.trim() !== "" &&
-      (candidate.renderPolicy === "never" || candidate.renderPolicy === "on-shell-warning" || candidate.renderPolicy === "always") &&
-      Array.isArray(candidate.targetSchema)
-    ) {
-      sources.push(candidate as unknown as LookoutSource);
-    }
+    const source = parseSource(candidate, index, ids, issues);
+    if (source !== undefined) sources.push(source);
   });
 
   if (issues.length > 0) throw new RegistryValidationError(issues);
   return new LookoutRegistry(sources);
 }
 
-function validateTargetSchema(value: unknown, context: string, issues: string[]): void {
+function parseSource(
+  candidate: unknown,
+  index: number,
+  ids: Map<string, number>,
+  issues: string[],
+): LookoutSource | undefined {
+  const context = `sources[${index}]`;
+  if (!isRecord(candidate)) {
+    issues.push(`${context} must be an object`);
+    return undefined;
+  }
+  const firstIssue = issues.length;
+  const common = validateCommonSource(candidate, index, ids, issues);
+  const source = candidate.kind === "structured-file"
+    ? parseStructuredFileSource(candidate, common, issues)
+    : candidate.kind === "web-page" || candidate.kind === "api-record"
+      ? parseExtractableSource(candidate, candidate.kind, common, issues)
+      : invalidSourceKind(candidate, common.label, issues);
+  return issues.length === firstIssue ? source : undefined;
+}
+
+interface CommonSourceFields {
+  id: string | undefined;
+  url: string | undefined;
+  cadenceHint: string | undefined;
+  label: string;
+}
+
+function validateCommonSource(
+  candidate: Record<string, unknown>,
+  index: number,
+  ids: Map<string, number>,
+  issues: string[],
+): CommonSourceFields {
+  const context = `sources[${index}]`;
+  const id = typeof candidate.id === "string" && candidate.id.trim() !== "" ? candidate.id : undefined;
+  const label = id === undefined ? context : `${context} (id "${id}")`;
+  if (id === undefined) {
+    issues.push(`${context}.id must be a non-empty string`);
+  } else {
+    const first = ids.get(id);
+    if (first !== undefined) issues.push(`${label}.id duplicates sources[${first}].id`);
+    else ids.set(id, index);
+  }
+  const url = isHttpUrl(candidate.url) ? candidate.url : undefined;
+  if (url === undefined) {
+    issues.push(`${label}.url must be an absolute HTTP(S) URL`);
+  }
+  const cadenceHint = typeof candidate.cadenceHint === "string" && candidate.cadenceHint.trim() !== ""
+    ? candidate.cadenceHint
+    : undefined;
+  if (cadenceHint === undefined) {
+    issues.push(`${label}.cadenceHint must be a non-empty string`);
+  }
+  return { id, url, cadenceHint, label };
+}
+
+function parseStructuredFileSource(
+  candidate: Record<string, unknown>,
+  common: CommonSourceFields,
+  issues: string[],
+): StructuredFileLookoutSource | undefined {
+  if (!isStructuredFileFormat(candidate.format)) {
+    issues.push(`${common.label}.format must be "yaml", "json", or "csv"`);
+  }
+  if (candidate.targetSchema !== undefined) {
+    issues.push(`${common.label}.targetSchema is not allowed for structured-file sources`);
+  }
+  if (candidate.renderPolicy !== undefined) {
+    issues.push(`${common.label}.renderPolicy is not allowed for structured-file sources`);
+  }
+  if (
+    common.id === undefined || common.url === undefined || common.cadenceHint === undefined ||
+    !isStructuredFileFormat(candidate.format)
+  ) return undefined;
+  return {
+    id: common.id,
+    kind: "structured-file",
+    format: candidate.format,
+    url: common.url,
+    cadenceHint: common.cadenceHint,
+  };
+}
+
+function parseExtractableSource(
+  candidate: Record<string, unknown>,
+  kind: "web-page" | "api-record",
+  common: CommonSourceFields,
+  issues: string[],
+): ExtractableLookoutSource | undefined {
+  if (!isRenderPolicy(candidate.renderPolicy)) {
+    issues.push(`${common.label}.renderPolicy must be "never", "on-shell-warning", or "always"`);
+  }
+  const targetSchema = validateTargetSchema(candidate.targetSchema, common.label, issues)
+    ? candidate.targetSchema
+    : undefined;
+  if (candidate.format !== undefined) {
+    issues.push(`${common.label}.format is only allowed for structured-file sources`);
+  }
+  if (
+    common.id === undefined || common.url === undefined || common.cadenceHint === undefined ||
+    !isRenderPolicy(candidate.renderPolicy) || targetSchema === undefined
+  ) return undefined;
+  return {
+    id: common.id,
+    kind,
+    url: common.url,
+    targetSchema,
+    cadenceHint: common.cadenceHint,
+    renderPolicy: candidate.renderPolicy,
+  };
+}
+
+function invalidSourceKind(
+  candidate: Record<string, unknown>,
+  label: string,
+  issues: string[],
+): undefined {
+  issues.push(`${label}.kind must be "web-page", "api-record", or "structured-file"`);
+  if (!isRenderPolicy(candidate.renderPolicy)) {
+    issues.push(`${label}.renderPolicy must be "never", "on-shell-warning", or "always"`);
+  }
+  validateTargetSchema(candidate.targetSchema, label, issues);
+  if (candidate.format !== undefined) {
+    issues.push(`${label}.format is only allowed for structured-file sources`);
+  }
+  return undefined;
+}
+
+function isStructuredFileFormat(value: unknown): value is StructuredFileFormat {
+  return value === "yaml" || value === "json" || value === "csv";
+}
+
+function isRenderPolicy(value: unknown): value is RenderPolicy {
+  return value === "never" || value === "on-shell-warning" || value === "always";
+}
+
+function validateTargetSchema(
+  value: unknown,
+  context: string,
+  issues: string[],
+): value is TargetFieldSchema[] {
+  const firstIssue = issues.length;
   if (!Array.isArray(value)) {
     issues.push(`${context}.targetSchema must be an array`);
-    return;
+    return false;
   }
   const allowedTypes = new Set(["string", "number", "boolean", "date", "enum", "array", "object"]);
   value.forEach((field, index) => {
@@ -150,6 +266,7 @@ function validateTargetSchema(value: unknown, context: string, issues: string[])
       issues.push(`${label}.inferenceType must be "explicit" or "inferred"`);
     }
   });
+  return issues.length === firstIssue;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

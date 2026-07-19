@@ -3,6 +3,7 @@ import test from "node:test";
 import { parseSnapshotSourceRef } from "@kontourai/forage/fetch";
 import type { FetchResult, SnapshotStore } from "@kontourai/forage/fetch";
 import { createCheckRunner } from "../src/check-runner.js";
+import type { StructuredFileLookoutSource } from "../src/registry.js";
 import { memoryStore, snapshot, source } from "./helpers.js";
 
 test("AC1 --all returns one ordered result per registered source and stores both fresh snapshots", async () => {
@@ -159,6 +160,34 @@ test("renderPolicy is inert registry data during L1 checks", async () => {
   });
   await runner.check(source("alpha", { renderPolicy: "always" }));
   assert.deepEqual(configs, [{ id: "alpha", url: "https://example.test/alpha", egress: { guarded: true } }]);
+});
+
+test("structured files use the same guarded fetch, raw snapshot, and drift classification", async () => {
+  const structured: StructuredFileLookoutSource = {
+    id: "published-results",
+    kind: "structured-file",
+    format: "yaml",
+    url: "https://example.test/results.yml",
+    cadenceHint: "weekly",
+  };
+  const body = "score: 42\n";
+  const store = memoryStore();
+  const configs: unknown[] = [];
+  const result = await createCheckRunner({
+    store,
+    fetchSource: async (config) => {
+      configs.push(config);
+      return { snapshot: snapshot(config.id, body, { url: config.url }) };
+    },
+  }).check(structured);
+
+  assert.equal(result.kind, "changed");
+  assert.deepEqual(configs, [{
+    id: "published-results",
+    url: "https://example.test/results.yml",
+    egress: { guarded: true },
+  }]);
+  assert.equal(store.puts[0]?.body, body);
 });
 
 test("L1 check does not invoke the datum resolver", async () => {

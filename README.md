@@ -81,6 +81,13 @@ override with the library path argument or the CLI `--registry` flag):
       "targetSchema": [{ "path": "title", "type": "string", "required": true }],
       "cadenceHint": "daily",
       "renderPolicy": "never"
+    },
+    {
+      "id": "published-results",
+      "kind": "structured-file",
+      "format": "yaml",
+      "url": "https://raw.githubusercontent.com/example/project/0123456789abcdef0123456789abcdef01234567/results.yml",
+      "cadenceHint": "weekly"
     }
   ]
 }
@@ -91,11 +98,17 @@ Fields per source:
 | Field | Meaning |
 | --- | --- |
 | `id` | Non-empty, unique within the document. Used for exact lookup and snapshot identity. |
-| `kind` | `web-page` or `api-record`. |
+| `kind` | `web-page`, `api-record`, or `structured-file`. |
 | `url` | Absolute HTTP(S) URL. |
-| `targetSchema` | Traverse `TargetFieldSchema[]`. Stored inert at L1 (no extraction yet). |
+| `format` | Required only for `structured-file`: `yaml`, `json`, or `csv`. Lookout does not parse it. |
+| `targetSchema` | Required for `web-page` and `api-record`: Traverse `TargetFieldSchema[]`. Stored inert at L1 (no extraction yet). |
 | `cadenceHint` | Non-empty string; advisory only — Lookout does not schedule. |
-| `renderPolicy` | `never` \| `on-shell-warning` \| `always`. **Inert** at L1 (never mapped to a fetch/render policy). |
+| `renderPolicy` | Required for `web-page` and `api-record`: `never` \| `on-shell-warning` \| `always`. **Inert** at L1. |
+
+Structured-file entries retain raw fetched bytes and use the same guarded fetch,
+snapshot, comparison, and replay path as every other source. Parsing and domain
+normalization stay downstream. Prefer immutable, commit-pinned artifact URLs so
+an upstream branch move cannot silently redefine the cited source location.
 
 Validation reports **every** deterministic issue at once (with index/id context)
 and never reads the network. Lookup is exact-id; listing preserves file order —
@@ -144,6 +157,7 @@ can't catch this. `checkSchemaCoverage` is the static complement:
 ```ts
 import { checkSchemaCoverage } from "@kontourai/lookout";
 
+if (source.kind === "structured-file") throw new Error("structured sources are parsed downstream");
 const { covered, gaps } = checkSchemaCoverage(source.targetSchema, proposals);
 // covered: declared paths at least one proposal produced (schema order)
 // gaps:    declared paths that produced none, each with its `required` flag

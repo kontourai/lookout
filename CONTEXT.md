@@ -15,11 +15,11 @@ throwing.
 ## Term Glossary
 
 - **Source** (`LookoutSource`): a caller-owned description of one monitored
-  target — its `id`, `kind` (`web-page` | `api-record`), an absolute HTTP(S)
-  `url`, a Traverse `TargetFieldSchema[]` `targetSchema` (stored inert at L1; no
-  extraction yet), a `cadenceHint`, and a `renderPolicy`. Lookout defines no
-  domain field names itself; the schema is 100% caller-supplied, so no domain
-  vocabulary lives in this package.
+  target — its `id`, `kind` (`web-page` | `api-record` | `structured-file`), an
+  absolute HTTP(S) `url`, and a `cadenceHint`. Web/API sources also carry a
+  Traverse `TargetFieldSchema[]` plus inert `renderPolicy`; structured files
+  instead declare `format` (`yaml` | `json` | `csv`). Lookout retains their raw
+  bytes but does not parse or normalize them.
 - **Registry** (`LookoutRegistry`): the loaded, validated set of sources from a
   versioned `{ version: 1, sources: [...] }` JSON document (default
   `<cwd>/lookout.sources.json`). Provides exact-id lookup (`get`) and a stable

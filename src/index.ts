@@ -20,10 +20,13 @@ export {
   RegistryValidationError,
 } from "./registry.js";
 export type {
+  ExtractableLookoutSource,
   LookoutRegistryDocument,
   LookoutSource,
   LookoutSourceKind,
   RenderPolicy,
+  StructuredFileFormat,
+  StructuredFileLookoutSource,
 } from "./registry.js";
 export { createLookoutSnapshotStore } from "./snapshot-store.js";
 export { canonicalValueKey } from "./canonical-value.js";
