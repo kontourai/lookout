@@ -22,12 +22,71 @@ test("AC1 --all returns one ordered result per registered source and stores both
 
 test("AC2 validator recheck returns unchanged-304 and never reads the 304 body", async () => {
   const prior = snapshot("alpha", "prior", { headers: { etag: '"v1"' } });
-  const served = { ...prior, fromCache: true, notModified: true };
-  Object.defineProperty(served, "body", { get() { throw new Error("304 body was read"); }, enumerable: true });
+  const served = new Proxy(
+    { ...prior, fromCache: true, notModified: true },
+    {
+      get(target, property, receiver) {
+        if (property === "body") throw new Error("304 body was read");
+        return Reflect.get(target, property, receiver);
+      },
+    },
+  );
   const store = memoryStore([prior]);
   const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: served }) }).check(source("alpha"));
   assert.equal(result.kind, "unchanged-304");
   assert.equal(store.puts.length, 0);
+});
+
+test("a malformed 304 without the matching prior capture is a dependency-contract error", async () => {
+  const served = { ...snapshot("alpha", "served"), fromCache: true, notModified: true };
+  const noPrior = await createCheckRunner({
+    store: memoryStore(),
+    fetchSource: async () => ({ snapshot: served }),
+  }).check(source("alpha"));
+  assert.equal(noPrior.kind, "error");
+  if (noPrior.kind === "error") {
+    assert.equal(noPrior.origin, "lookout");
+    assert.equal(noPrior.error.kind, "dependency-contract");
+  }
+
+  const mismatched = await createCheckRunner({
+    store: memoryStore([snapshot("alpha", "prior")]),
+    fetchSource: async () => ({ snapshot: served }),
+  }).check(source("alpha"));
+  assert.equal(mismatched.kind, "error");
+  if (mismatched.kind === "error") {
+    assert.equal(mismatched.origin, "lookout");
+    assert.equal(mismatched.error.kind, "dependency-contract");
+  }
+
+  for (const changedMetadata of [
+    { headers: { etag: '"v2"' } },
+    { redirects: ["https://example.test/redirect"] },
+    { rendered: true },
+    { body: new TextEncoder().encode("served") },
+  ]) {
+    const prior = snapshot("alpha", "served", { headers: { etag: '"v1"' } });
+    const metadataMismatch = await createCheckRunner({
+      store: memoryStore([prior]),
+      fetchSource: async () => ({ snapshot: { ...prior, ...changedMetadata, notModified: true } }),
+    }).check(source("alpha"));
+    assert.equal(metadataMismatch.kind, "error");
+    if (metadataMismatch.kind === "error") {
+      assert.equal(metadataMismatch.error.kind, "dependency-contract");
+    }
+  }
+
+  const prior = snapshot("alpha", "served");
+  const accessorBody = { ...prior, notModified: true };
+  Object.defineProperty(accessorBody, "body", { get() { throw new Error("304 body was read"); }, enumerable: true });
+  const unknownRepresentation = await createCheckRunner({
+    store: memoryStore([prior]),
+    fetchSource: async () => ({ snapshot: accessorBody }),
+  }).check(source("alpha"));
+  assert.equal(unknownRepresentation.kind, "error");
+  if (unknownRepresentation.kind === "error") {
+    assert.equal(unknownRepresentation.error.kind, "dependency-contract");
+  }
 });
 
 test("AC2 validator-free identical body returns unchanged-hash from prior hash comparison", async () => {
@@ -57,7 +116,7 @@ test("registered-source SSRF: a link-local/metadata target is refused by the def
   const store = memoryStore();
   // No fetchSource / fetchOptions.fetch injected → the forage-guarded default
   // transport. 169.254.169.254 is link-local, so the guard denies it before any
-  // connection (no DNS, deterministic). The drift check surfaces a typed traverse
+  // connection (no DNS, deterministic). The drift check surfaces a typed Forage
   // error rather than fetching an internal endpoint — a registered source can
   // never be turned into an SSRF vector.
   // Silence retry backoff timers only — `fetch` stays defaulted to the guard.
@@ -67,16 +126,16 @@ test("registered-source SSRF: a link-local/metadata target is refused by the def
   }).check(source("metadata", { url: "http://169.254.169.254/latest/meta-data/" }));
   assert.equal(result.kind, "error");
   if (result.kind !== "error") return;
-  assert.equal(result.origin, "traverse");
+  assert.equal(result.origin, "forage");
   assert.equal(store.puts.length, 0);
 });
 
-test("AC4 traverse network error is preserved and check never rejects", async () => {
+test("AC4 Forage network error is preserved and check never rejects", async () => {
   const error = { kind: "network" as const, message: "connection reset" };
   const result = await createCheckRunner({ store: memoryStore(), fetchSource: async () => ({ error }) }).check(source());
   assert.deepEqual(result, {
     kind: "error",
-    origin: "traverse",
+    origin: "forage",
     error,
     sourceId: "source-a",
     sourceUrl: "https://example.test/source-a",
@@ -111,14 +170,14 @@ test("persistence mutation guard flips red when fresh snapshot put is skipped", 
   assert.equal((await store.get("alpha", current.bodyHash))?.body, "fresh");
 });
 
-test("error propagation mutation guard flips red when a traverse error is swallowed", async () => {
+test("error propagation mutation guard flips red when a Forage error is swallowed", async () => {
   const result = await createCheckRunner({
     store: memoryStore(),
     fetchSource: async () => ({ error: { kind: "timeout", message: "deadline" } }),
   }).check(source("alpha"));
   assert.equal(result.kind, "error");
   if (result.kind !== "error") return;
-  assert.equal(result.origin, "traverse");
+  assert.equal(result.origin, "forage");
   assert.equal(result.error.kind, "timeout");
 });
 

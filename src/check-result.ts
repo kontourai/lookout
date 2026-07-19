@@ -33,7 +33,7 @@ export type LookoutErrorKind =
 
 export interface ErrorResult extends CheckResultCommon {
   kind: "error";
-  origin: "traverse" | "lookout";
+  origin: "forage" | "lookout";
   error: FetchError | { kind: LookoutErrorKind; message: string };
 }
 

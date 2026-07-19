@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { Snapshot, SnapshotStore } from "@kontourai/forage";
+import type { ExactSnapshotStore, Snapshot } from "@kontourai/forage";
+import {
+  buildSnapshotSourceRef,
+  parseSnapshotSourceRef,
+} from "@kontourai/forage/fetch";
 import type { ExtractableLookoutSource } from "../src/registry.js";
 
 export function source(
@@ -33,7 +37,7 @@ export function snapshot(
   };
 }
 
-export function memoryStore(seed: Snapshot[] = []): SnapshotStore & { puts: Snapshot[] } {
+export function memoryStore(seed: Snapshot[] = []): ExactSnapshotStore & { puts: Snapshot[] } {
   const values = [...seed];
   const puts: Snapshot[] = [];
   return {
@@ -50,6 +54,21 @@ export function memoryStore(seed: Snapshot[] = []): SnapshotStore & { puts: Snap
     },
     async list(sourceId) {
       return values.filter((item) => item.sourceId === sourceId).reverse();
+    },
+    async findExact(reference) {
+      const match = values.find((item) => {
+        if (
+          item.sourceId !== reference.sourceId ||
+          item.url !== reference.url ||
+          item.bodyHash !== reference.bodyHash ||
+          item.fetchedAt !== reference.fetchedAt
+        ) return false;
+        if (reference.snapshotDigest === undefined) return true;
+        return parseSnapshotSourceRef(buildSnapshotSourceRef(item))?.snapshotDigest === reference.snapshotDigest;
+      });
+      return match === undefined
+        ? { kind: "missing" }
+        : { kind: "found", snapshot: match };
     },
   };
 }

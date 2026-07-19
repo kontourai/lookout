@@ -24,11 +24,11 @@ test("AC1 CLI --all emits exactly one JSON line per source in registry order", a
   assert.deepEqual(lines.map((line) => JSON.parse(line).sourceId), ["first", "second"]);
 });
 
-test("AC4 CLI serializes traverse FetchError and exits zero for a per-source failure", async () => {
+test("AC4 CLI serializes Forage FetchError and exits zero for a per-source failure", async () => {
   const registry = new LookoutRegistry([source("broken")]);
   const output = capture();
   const errorResult: CheckResult = {
-    ...common("broken"), kind: "error", origin: "traverse",
+    ...common("broken"), kind: "error", origin: "forage",
     error: { kind: "http-error", message: "unavailable", status: 503 },
   };
   const exitCode = await runCli({
@@ -152,8 +152,8 @@ function common(id: string) {
 
 function result(id: string, kind: "changed" | "unchanged-hash"): CheckResult {
   return kind === "changed"
-    ? { ...common(id), kind, priorSnapshotRef: null, currentSnapshotRef: `traverse-snapshot:${id}`, changeBasis: "initial" }
-    : { ...common(id), kind, priorSnapshotRef: `traverse-snapshot:${id}-old`, currentSnapshotRef: `traverse-snapshot:${id}-new` };
+    ? { ...common(id), kind, priorSnapshotRef: null, currentSnapshotRef: `forage-snapshot:${id}`, changeBasis: "initial" }
+    : { ...common(id), kind, priorSnapshotRef: `forage-snapshot:${id}-old`, currentSnapshotRef: `forage-snapshot:${id}-new` };
 }
 
 function runnerFor(results: CheckResult[]): CheckRunner {

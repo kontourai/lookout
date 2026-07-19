@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import {
   buildSnapshotSourceRef,
   fetchSource as forageFetchSource,
@@ -74,10 +75,10 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
 
     const base = { ...common(), warnings: Array.isArray(fetched?.warnings) ? [...fetched.warnings] : [] };
     if (!isFetchResult(fetched)) {
-      return lookoutError(base, "dependency-contract", "Traverse returned neither exactly one snapshot nor exactly one error");
+      return lookoutError(base, "dependency-contract", "Forage returned neither exactly one snapshot nor exactly one error");
     }
     if (fetched.error) {
-      return { ...base, kind: "error", origin: "traverse", error: fetched.error };
+      return { ...base, kind: "error", origin: "forage", error: fetched.error };
     }
 
     // Defense-in-depth: even if a future guard gap let a malformed snapshot
@@ -86,7 +87,24 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
     try {
       const snapshot = fetched.snapshot;
       if (snapshot.notModified === true) {
-        return { ...base, kind: "unchanged-304", snapshotRef: buildSnapshotSourceRef(snapshot) };
+        const snapshotBodyEncoding = bodyEncoding(snapshot);
+        const priorBodyEncoding = prior === undefined ? undefined : bodyEncoding(prior);
+        if (
+          prior === undefined ||
+          snapshotBodyEncoding === undefined ||
+          snapshotBodyEncoding !== priorBodyEncoding ||
+          snapshot.sourceId !== prior.sourceId ||
+          snapshot.url !== prior.url ||
+          snapshot.status !== prior.status ||
+          snapshot.fetchedAt !== prior.fetchedAt ||
+          snapshot.bodyHash !== prior.bodyHash ||
+          !isDeepStrictEqual(snapshot.headers, prior.headers) ||
+          !isDeepStrictEqual(snapshot.redirects, prior.redirects) ||
+          snapshot.rendered !== prior.rendered
+        ) {
+          return lookoutError(base, "dependency-contract", "Forage returned a 304 snapshot without the matching prior capture");
+        }
+        return { ...base, kind: "unchanged-304", snapshotRef: buildSnapshotSourceRef(prior) };
       }
 
       try {
@@ -127,6 +145,13 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
   }
 
   return { check, checkAll };
+}
+
+function bodyEncoding(snapshot: Snapshot): "utf8" | "bytes" | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(snapshot, "body");
+  if (descriptor === undefined || !("value" in descriptor)) return undefined;
+  if (typeof descriptor.value === "string") return "utf8";
+  return descriptor.value instanceof Uint8Array ? "bytes" : undefined;
 }
 
 function isFetchResult(value: unknown): value is { snapshot: Snapshot; error?: never; warnings?: string[] } | { error: NonNullable<FetchResult["error"]>; snapshot?: never; warnings?: string[] } {

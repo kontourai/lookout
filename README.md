@@ -3,8 +3,8 @@
 **Cheap, honest drift detection for content you re-check over time — "did this source change since we last looked?"**
 
 A small **source registry** and **non-throwing drift-check runner** built on
-[Traverse](https://github.com/kontourai/traverse) snapshots. It composes Traverse
-for fetching and snapshot storage, provides deterministic proposal diffing, and
+[Forage](https://github.com/kontourai/forage) snapshots. It composes Forage for
+fetching and snapshot storage, provides deterministic proposal diffing, and
 emits neutral, typed drift — its own vocabulary, in its own dependency-free
 package. It does **not** extract fields, author trust-layer records, project to
 Surface, review claims, notify, crawl, or schedule. Operational failures are
@@ -21,7 +21,7 @@ as "no change"). Lookout is the opposite on all three:
 |---|---|---|
 | Cost | full re-download every check | **conditional `304`** — often no download at all |
 | Signal | raw bytes (ads/timestamps = "changed") | **proposal-identity diff** — "a *new entity appeared*" vs "a byte moved" |
-| Honesty | a crash or false-`304` silently reads as "unchanged" | **typed results, never throws**; hardened against false-`304` (the [traverse#49](https://github.com/kontourai/traverse/issues/49) validator-scoping pin) |
+| Honesty | a crash or false-`304` silently reads as "unchanged" | **typed results, never throws**; Forage scopes validators to the exact prior resource and Lookout verifies the returned capture identity |
 | Output | your problem to shape | **neutral, typed drift** — events already Hachure-evidence-shaped, ready for a consumer to lift into a trust bundle |
 
 So the point isn't "diffing" — it's *cheap + honest + semantic + review-ready*
@@ -37,8 +37,7 @@ One layer in a four-verb stack; each repo owns one verb and is usable alone:
 - **lookout** — CHANGE: did this registered source drift since last look?
 - **survey** — the SHAPE: what reviewed truth looks like (claims / review / resolution)
 
-Lookout composes the fetch/snapshot layer (today Traverse's `/fetch`; re-points at
-`forage` as its single-source fetch surface lands) for cheap `304`-aware re-checks,
+Lookout composes Forage's `/fetch` surface for cheap `304`-aware re-checks,
 and Traverse's `ExtractionProposal` identity for the semantic diff. Dependency
 arrows point only downward — no cycles. Lookout itself depends on nothing in the
 trust layer: its events are already Hachure-evidence-shaped (`snapshotRef` /
@@ -58,12 +57,11 @@ owns its transport and opts out of the default guard.
 ## Requirements
 
 - Node.js `>= 22`.
-- `@kontourai/traverse` `>= 0.14.1`. This is a hard floor, not a preference:
-  trustworthy `unchanged-304` classification depends on the validator-scoping fix
-  from [traverse#49](https://github.com/kontourai/traverse/issues/49), first
-  released in `0.14.1`. Lookout exact-pins `0.14.1`. On an earlier Traverse a
-  conditional request could reuse a prior snapshot's validators against a
-  different URL and report a **false** `304`, so do not downgrade.
+- `@kontourai/forage` `>= 0.4.0`. Exact durable-reference replay requires the
+  resolver first released in `0.4.0`; trustworthy `unchanged-304`
+  classification also depends on Forage's validator-scoped revalidation.
+  Lookout exact-pins Traverse separately for schema and extraction-proposal
+  contracts.
 
 ## Registry
 
@@ -117,35 +115,39 @@ no merging, discovery, or remote registries.
 ## Check results
 
 A check classifies each source into exactly one of four kinds. Every result
-carries `sourceId`, the registered `sourceUrl`, `checkedAt`, and Traverse
-`warnings`.
+carries `sourceId`, the registered `sourceUrl`, `checkedAt`, and Forage fetch
+warnings.
 
 | `kind` | When | Extra fields |
 | --- | --- | --- |
 | `unchanged-304` | A validator-backed conditional request returned `304`; zero body transfer; the prior snapshot is not re-persisted. | `snapshotRef` |
 | `unchanged-hash` | A full body was fetched and persisted, but its sha256 `bodyHash` equals the prior, **and** it came from the same resource URL — established by Lookout's own comparison. | `priorSnapshotRef`, `currentSnapshotRef` |
 | `changed` | The fresh body differs from the prior (`changeBasis: "hash"`), **or** it is the first successful observation (`changeBasis: "initial"`, `priorSnapshotRef: null`). | `priorSnapshotRef` (nullable), `currentSnapshotRef`, `changeBasis` |
-| `error` | Any operational failure — contained so the runner never rejects. | `origin` (`traverse` \| `lookout`), `error` |
+| `error` | Any operational failure — contained so the runner never rejects. | `origin` (`forage` \| `lookout`), `error` |
 
 `unchanged-hash` asserts same-resource continuity, so it requires **both** an
 identical `bodyHash` **and** the same resource URL as the prior snapshot. If a
 source has moved — the prior snapshot's URL differs from this fetch's — the
 result is `changed` even when the bytes are byte-identical, and the fresh
 snapshot is persisted as the new baseline. (The `unchanged-304` path is already
-resource-scoped by Traverse's validators, so only the hash path needs this
+resource-scoped by Forage's validators, so only the hash path needs this
 guard.)
 
-`error` results preserve provenance: `origin: "traverse"` carries Traverse's
+`error` results preserve provenance: `origin: "forage"` carries Forage's
 discriminated `FetchError` verbatim (its `kind`, and `status` when present);
 `origin: "lookout"` carries a typed `kind` — `prior-read`, `persistence`,
 `dependency-contract`, or `unexpected`.
 
 Snapshot references (`snapshotRef` / `priorSnapshotRef` / `currentSnapshotRef`)
-are portable logical refs from Traverse's `buildSnapshotSourceRef` — never
-filesystem paths. Snapshots are stored via Traverse's filesystem store, rooted by
+are portable logical refs from Forage's `buildSnapshotSourceRef` — never
+filesystem paths. Snapshots are stored via Forage's filesystem store, rooted by
 default at `<cwd>/.kontourai/lookout/snapshots` (override with the CLI
 `--snapshot-root` flag or by injecting a store in library use). Lookout adds no
-custom filenames or retention.
+custom filenames or retention. `resolveLookoutSnapshot()` replays one exact
+reference through an injected store or Lookout snapshot root, authenticates its
+body and replay metadata, and never fetches. References emitted before Forage's
+replay-envelope digest remain resolvable with `integrity: "body-and-identity"`;
+new references report `integrity: "snapshot-envelope"`.
 
 ## Schema coverage
 
@@ -227,7 +229,7 @@ const results = await runner.checkAll(registry.list());
 ```
 
 `createCheckRunner` accepts injected seams — `store`, `fetchSource` (defaults to
-Traverse's fetcher over forage's SSRF-guarded egress), `fetchOptions`, and
+Forage's SSRF-guarded fetcher), `fetchOptions`, and
 `clock` — so checks run with no live network or timers in tests. Injecting either
 `fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
@@ -235,9 +237,9 @@ Traverse's fetcher over forage's SSRF-guarded egress), `fetchOptions`, and
 
 Extraction, Surface projection, notifications, crawling, review/escalation or
 authority policy, rendered-fetch wiring
-(`renderPolicy` is inert pending traverse#50), and scheduling. Traverse retains
-all fetch politeness, robots, redirects, retries, timeouts, headers, user-agent,
-and rendered-fetch behavior.
+(`renderPolicy` is inert), and scheduling. Forage retains all fetch politeness,
+robots, redirects, retries, timeouts, headers, user-agent, and rendered-fetch
+behavior.
 
 ## Development
 
