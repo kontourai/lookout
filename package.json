@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@kontourai/datum": "0.3.0",
-    "@kontourai/forage": "^0.4.0",
+    "@kontourai/forage": "0.4.1",
     "@kontourai/traverse": "0.14.1"
   },
   "devDependencies": {
