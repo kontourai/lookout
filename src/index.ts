@@ -73,3 +73,22 @@ export { createDriftEmitter } from "./drift-emission.js";
 export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput } from "./drift-emission.js";
 export { checkSchemaCoverage } from "./coverage.js";
 export type { SchemaCoverageGap, SchemaCoverageResult } from "./coverage.js";
+export { createObserveExtractDiff } from "./observe-extract-diff.js";
+export type {
+  ObserveExtractAcquisition,
+  ObserveExtractAttempt,
+  ObserveExtractDiff,
+  ObserveExtractDiffOptions,
+  ObserveExtractError,
+  ObserveExtractErrorKind,
+  ObserveExtractExtraction,
+  ObserveExtractExtractionInput,
+  ObserveExtractObservation,
+  ObserveExtractObservationIdentity,
+  ObserveExtractOutcome,
+  ObserveExtractProviderFailure,
+  ObserveExtractRecorder,
+  ObserveExtractResult,
+  ObserveExtractSource,
+  ObserveExtractSourceSnapshot,
+} from "./observe-extract-diff.js";
