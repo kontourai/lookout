@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-07-20T15-16-10-271Z-215a49ac6274",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-07-20T15:16:10.271Z",
+  "repoStandardsHash": "sha256:797135aa570e3fdc7410bb6ecbd8a47cd1c9df563c13cf41ebe4b5bc5b77b31b",
+  "repoMapHash": "sha256:e698ae15b1255110ec627a3474dbac9e0097e106a4925c28d170824dc5916875",
+  "authoritySettingsHash": "sha256:c59dac00a2b31d8465830b38d94c36840405603e9e953ee02e478d1254e3365b",
+  "priorAttestationId": "bootstrap-2026-07-20T14-45-11-020Z-f18440d44b27",
+  "validUntilDays": 90,
+  "notes": "Expand governed product-area coverage after portfolio dogfooding review.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "bootstrap-2026-07-20T14-45-11-020Z-f18440d44b27",
+    "approvalRef": "https://github.com/kontourai/veritas/issues/135#issuecomment-5023543387",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "cc7ef2988dba88439bcc9828a8d6de8417fc6c160e48c1a37e887af3ca7ec6f7",
+        "validUntil": "2026-10-18T15:16:10.271Z"
+      },
+      "createdAt": "2026-07-20T15:16:10.271Z",
+      "updatedAt": "2026-07-20T15:16:10.271Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274",
+      "claimId": "veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Expand governed product-area coverage after portfolio dogfooding review.",
+      "observedAt": "2026-07-20T15:16:10.271Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "cc7ef2988dba88439bcc9828a8d6de8417fc6c160e48c1a37e887af3ca7ec6f7",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-07-20T15:16:10.271Z",
+        "validUntil": "2026-10-18T15:16:10.271Z",
+        "contentHash": "cc7ef2988dba88439bcc9828a8d6de8417fc6c160e48c1a37e887af3ca7ec6f7"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274.verified",
+      "claimId": "veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-07-20T15-16-10-271Z-215a49ac6274"
+      ],
+      "createdAt": "2026-07-20T15:16:10.271Z",
+      "verifiedAt": "2026-07-20T15:16:10.271Z"
+    }
+  }
+}

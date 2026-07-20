@@ -40,3 +40,8 @@ integrity. Scheduling stays external. The runner NEVER throws.
 
 - `npm run verify` · `npm test` · `npm run typecheck` · `npm run check:pack` ·
   `npm run check:decisions` · `npm run check:content-boundary`
+
+<!-- veritas:governance-block:start -->
+This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
+After changes, run `npm exec --yes --package=@kontourai/veritas@1.5.2 -- veritas readiness` and address any FAIL lines before finishing.
+<!-- veritas:governance-block:end -->
