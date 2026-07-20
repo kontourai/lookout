@@ -6,7 +6,9 @@ answers whether a source drifted, can deterministically compare caller-produced
 proposal observations, and emits that comparison as neutral, typed drift in its
 own vocabulary. It composes Forage for fetch and snapshots, Traverse for
 schema/proposal types, and depends on
-nothing in the trust layer — its events are already Hachure-evidence-shaped, but
+nothing in the trust layer — its events are already
+[Hachure](https://github.com/hachure-org/spec)-evidence-shaped (Hachure is the
+open, product-neutral trust-record spec Surface's TrustBundle implements), but
 lifting them into a Hachure `TrustBundle` (via `@kontourai/surface`'s
 `TrustBundleBuilder`) is a consumer/product responsibility, not Lookout's.
 Extraction, Surface projection, authority policy, notification, and scheduling
