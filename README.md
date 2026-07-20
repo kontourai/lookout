@@ -288,6 +288,46 @@ The existing `createCheckRunner` and `createDriftEmitter` entrypoints remain
 available. Use `createDriftEmitter` when the caller wants deterministic
 proposal-diff events with its own identity callbacks.
 
+## Route semantic transitions to review
+
+`buildSemanticReviewWork` turns one genuine prior/current proposal transition
+into structurally Survey-compatible `ReviewItem` resources without adding a
+runtime dependency on a review product. The caller supplies entity/field
+identity callbacks and claim meaning; Lookout supplies deterministic transition
+and item identities.
+
+```ts
+const work = buildSemanticReviewWork({
+  prior,
+  current,
+  observationIdentity: { prior: priorId, current: currentId },
+  schema: source.targetSchema,
+  selectEntities,
+  entityIdentity,
+  proposalsFor,
+  fieldIdentity,
+  claimTarget(change) {
+    return describeClaim(change);
+  },
+});
+```
+
+Added, removed, moved, provenance-changed, and value-changed proposals become distinct work items.
+New coverage or exact-provenance gaps are also reviewable. Each available side
+retains its exact snapshot reference, observation time, locator, excerpt, and
+extractor. An absent side is explicit and anchored to the corresponding
+observation snapshot, so a removal remains reviewable even when the new
+extraction emits no value. Identical proposal sets produce no semantic work;
+replaying the same pair of observation identities produces byte-identical
+resources.
+
+Review resolution, escalation, persistence, and authority policy stay with the
+consumer. Evidence excerpts and caller-supplied claim targets can contain
+sensitive data; apply retention, redaction, and access controls before storing
+or forwarding review work. Only compact typed identities cross the producer
+metadata boundary; no provider messages, native diagnostics, or raw responses
+are copied.
+
 ## Non-goals
 
 Acquisition and extraction implementations, Surface projection, notifications,

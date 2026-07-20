@@ -92,3 +92,14 @@ export type {
   ObserveExtractSource,
   ObserveExtractSourceSnapshot,
 } from "./observe-extract-diff.js";
+export { buildSemanticReviewWork, semanticReviewApiVersion } from "./semantic-review-work.js";
+export type {
+  BuildSemanticReviewWorkInput,
+  SemanticClaimTarget,
+  SemanticObservationIdentity,
+  SemanticReviewCandidate,
+  SemanticReviewChange,
+  SemanticReviewItem,
+  SemanticReviewKind,
+  SemanticReviewWork,
+} from "./semantic-review-work.js";
