@@ -6,9 +6,9 @@ A small **source registry** and **non-throwing drift-check runner** built on
 [Forage](https://github.com/kontourai/forage) snapshots. It composes Forage for
 fetching and snapshot storage, provides deterministic proposal diffing, and
 emits neutral, typed drift — its own vocabulary, in its own dependency-free
-package. It does **not** extract fields, author trust-layer records, project to
-Surface, review claims, notify, crawl, or schedule. Operational failures are
-returned as typed results.
+package. It does **not** implement acquisition or extraction, author trust-layer
+records, project to Surface, review claims, notify, crawl, or schedule.
+Operational failures are returned as typed results.
 
 ## Why it's different
 
@@ -233,10 +233,65 @@ Forage's SSRF-guarded fetcher), `fetchOptions`, and
 `clock` — so checks run with no live network or timers in tests. Injecting either
 `fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
+## Observe changed sources without re-extracting unchanged ones
+
+`createObserveExtractDiff` is an optional library composition for callers that
+want one typed observation per check. Supply acquisition, extraction, and
+recording capabilities; Lookout does not choose a content-preparation method,
+provider, or observation database.
+
+```ts
+import { createObserveExtractDiff } from "@kontourai/lookout";
+
+const composition = createObserveExtractDiff({
+  acquisition: { check: runner.check },
+  extraction: {
+    async extract({ source, snapshotRef }) {
+      // Resolve `snapshotRef`, prepare content, and invoke a caller-selected
+      // extraction implementation. Return its public Traverse result.
+      return extractChangedSource(source, snapshotRef);
+    },
+  },
+  recorder: {
+    async record(observation) {
+      // Caller-owned continuity and durable storage.
+      return saveObservation(observation);
+    },
+  },
+});
+
+const result = await composition.observe(source);
+```
+
+`unchanged-304` and `unchanged-hash` are recorded as `unchanged` and never call
+the extraction capability, so they make zero preparation and provider calls.
+Changed observations retain source and snapshot references, Traverse's prepared
+artifact identity, the proposal set, and the current/prior observation
+identities returned by the recorder. `partial`, `provider-failure`, mixed
+`partial-provider-failure`, and `extraction-failure` remain distinct typed
+outcomes. Provider failures are reduced to provider-neutral `kind` and
+`retryable` classifications; provider names, messages, native diagnostics,
+free-form extraction warnings, raw responses, and thrown-error text are not
+copied into the durable observation.
+A first changed observation
+has `priorObservationId: null`; it is a baseline observation, not a fabricated
+list of additions or removals.
+
+The composition validates that the check identifies the requested registered
+source and that Traverse validates the prepared artifact whose snapshot anchor
+matches the current check. This prevents mismatched capability results from
+being recorded as one observation. Proposal excerpts, source URLs, and
+acquisition check warnings can still contain sensitive source material; callers
+must apply their own retention and access policy before durable storage.
+
+The existing `createCheckRunner` and `createDriftEmitter` entrypoints remain
+available. Use `createDriftEmitter` when the caller wants deterministic
+proposal-diff events with its own identity callbacks.
+
 ## Non-goals
 
-Extraction, Surface projection, notifications, crawling, review/escalation or
-authority policy, rendered-fetch wiring
+Acquisition and extraction implementations, Surface projection, notifications,
+crawling, review/escalation or authority policy, rendered-fetch wiring
 (`renderPolicy` is inert), and scheduling. Forage retains all fetch politeness,
 robots, redirects, retries, timeouts, headers, user-agent, and rendered-fetch
 behavior.

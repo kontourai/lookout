@@ -9,9 +9,9 @@ schema/proposal types, and depends on
 nothing in the trust layer — its events are already Hachure-evidence-shaped, but
 lifting them into a Hachure `TrustBundle` (via `@kontourai/surface`'s
 `TrustBundleBuilder`) is a consumer/product responsibility, not Lookout's.
-Extraction, Surface projection, authority policy, notification, and scheduling
-remain external. Public operational entrypoints return typed results rather than
-throwing.
+Extraction implementations, Surface projection, authority policy, notification,
+and scheduling remain external. Public operational entrypoints return typed
+results rather than throwing.
 
 ## Term Glossary
 
@@ -76,6 +76,18 @@ throwing.
   supplies fact `origin`; resolution is always `observation`. First observation
   produces a `baseline-established` fact, no events, and a null
   `priorObservationId`.
+- **Observe-extract-diff composition** (`createObserveExtractDiff`): an
+  additive, injected acquisition/extraction/recording composition. It records
+  `unchanged-304` and `unchanged-hash` observations without calling extraction;
+  therefore no preparation or provider work occurs for unchanged sources. A
+  changed source retains its registered identity, prior/current snapshot refs,
+  Traverse prepared-artifact identity, proposal-set observation, compact
+  attempt record, and recorder-provided observation identities. Traverse's
+  typed partial completion, provider failures, and mixed partial/failure runs
+  remain distinct outcomes. Durable failure details are reduced to neutral
+  classifications without provider names, messages, native diagnostics, or
+  free-form extraction warnings; a
+  first observation has a null prior identity and no fabricated comparison.
 - **Consumer projection**: lifting emitted drift events into a Hachure
   `TrustBundle` (via `@kontourai/surface`'s `TrustBundleBuilder`) is a
   consumer/product responsibility. Lookout imports nothing from the trust layer
@@ -84,8 +96,8 @@ throwing.
 ## Boundary
 
 Lookout owns the registry, drift classification, deterministic proposal diff,
-proposal-observation continuity, neutral drift emission, and JSONL commands.
-Forage owns fetching, snapshot storage, and durable reference integrity;
-Traverse owns extraction. Trust-bundle authoring,
+proposal-observation continuity, neutral drift emission, injected
+observe-extract branching, and JSONL commands. Forage owns fetching, snapshot
+storage, and durable reference integrity; Traverse owns extraction. Trust-bundle authoring,
 Surface projection, notification, crawling, review/authority policy, and
 scheduling remain external.
