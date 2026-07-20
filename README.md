@@ -10,6 +10,52 @@ package. It does **not** implement acquisition or extraction, author trust-layer
 records, project to Surface, review claims, notify, crawl, or schedule.
 Operational failures are returned as typed results.
 
+## Quick start
+
+Register one source in a JSON file (defaults to `<cwd>/lookout.sources.json`;
+see [Registry](#registry) for every field):
+
+```json
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "example-home",
+      "kind": "web-page",
+      "url": "https://example.com/",
+      "targetSchema": [{ "path": "title", "type": "string", "required": true }],
+      "cadenceHint": "daily",
+      "renderPolicy": "never"
+    }
+  ]
+}
+```
+
+Then check it with the CLI:
+
+```bash
+lookout check example-home --registry ./lookout.sources.json
+```
+
+The first run has nothing to compare against, so it persists a baseline
+snapshot and reports `changed`/`initial`:
+
+```json
+{"sourceId":"example-home","sourceUrl":"https://example.com/","checkedAt":"2026-07-20T14:12:48.248Z","warnings":[],"kind":"changed","priorSnapshotRef":null,"currentSnapshotRef":"forage-snapshot:example-home?...","changeBasis":"initial"}
+```
+
+Run the same command again and, if the source hasn't changed, Forage's
+conditional request returns `304` with zero body transfer — no re-download,
+just confirmation:
+
+```json
+{"sourceId":"example-home","sourceUrl":"https://example.com/","checkedAt":"2026-07-20T14:12:53.089Z","warnings":[],"kind":"unchanged-304","snapshotRef":"forage-snapshot:example-home?..."}
+```
+
+Exit code is `0` for both runs — a per-source result, even a fetch failure, is
+not a CLI failure. See [CLI](#cli) for the full exit-code contract and
+[Check results](#check-results) for what each `kind` means.
+
 ## Why it's different
 
 The naive way to answer "did it change?" is to re-crawl the source and diff the
@@ -22,7 +68,7 @@ as "no change"). Lookout is the opposite on all three:
 | Cost | full re-download every check | **conditional `304`** — often no download at all |
 | Signal | raw bytes (ads/timestamps = "changed") | **proposal-identity diff** — "a *new entity appeared*" vs "a byte moved" |
 | Honesty | a crash or false-`304` silently reads as "unchanged" | **typed results, never throws**; Forage scopes validators to the exact prior resource and Lookout verifies the returned capture identity |
-| Output | your problem to shape | **neutral, typed drift** — events already Hachure-evidence-shaped, ready for a consumer to lift into a trust bundle |
+| Output | your problem to shape | **neutral, typed drift** — events already [Hachure](https://github.com/hachure-org/spec)-evidence-shaped (the open, product-neutral trust-record spec Surface's TrustBundle implements), ready for a consumer to lift into a trust bundle |
 
 So the point isn't "diffing" — it's *cheap + honest + semantic + review-ready*
 change detection, so a periodic re-check surfaces **only the real delta** (this
