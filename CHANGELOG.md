@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1](https://github.com/kontourai/lookout/compare/v0.3.0...v0.3.1) (2026-07-20)
+
+
+### Features
+
+* expose exact offline snapshot replay ([#22](https://github.com/kontourai/lookout/issues/22)) ([fb4b4c8](https://github.com/kontourai/lookout/commit/fb4b4c81cc48d7bd848684e7de2b942ea5ceca87))
+* observe changed extraction results ([c6d582f](https://github.com/kontourai/lookout/commit/c6d582f89caf9bf5bcb3664b91b81a8d0bac54be))
+* observe changed extraction results ([10a9cd4](https://github.com/kontourai/lookout/commit/10a9cd44eada06b64dd6b9e7fb66946e87335196))
+* re-point fetch/snapshot layer onto @kontourai/forage (lookout[#11](https://github.com/kontourai/lookout/issues/11)) ([#17](https://github.com/kontourai/lookout/issues/17)) ([099941f](https://github.com/kontourai/lookout/commit/099941fd365f660232155753116fd496e3c98cd1))
+* register immutable structured-file sources [skip ci] ([7dbb7b3](https://github.com/kontourai/lookout/commit/7dbb7b3636363d449b74c3e5f001b0a9ad83dc0c))
+
 ## [0.3.0](https://github.com/kontourai/lookout/compare/v0.2.0...v0.3.0) (2026-07-15)
 
 
