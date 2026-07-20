@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.2](https://github.com/kontourai/lookout/compare/v0.3.1...v0.3.2) (2026-07-20)
+
+
+### Features
+
+* route semantic drift to review ([409cb59](https://github.com/kontourai/lookout/commit/409cb59be16dcbdbdd1d50e9368e0e7a815e659a))
+* route semantic drift to review ([6e82afb](https://github.com/kontourai/lookout/commit/6e82afb2ae03eb6b8255333fa4a0df4d94d81fe2))
+
+
+### Documentation
+
+* content sweep — accuracy and clarity fixes ([#27](https://github.com/kontourai/lookout/issues/27)) ([8fc656e](https://github.com/kontourai/lookout/commit/8fc656e067acd3505af2ef81dc88552d9b38e70e))
+
 ## [0.3.1](https://github.com/kontourai/lookout/compare/v0.3.0...v0.3.1) (2026-07-20)
 
 
