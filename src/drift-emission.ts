@@ -79,6 +79,8 @@ function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
       removedProposalOccurrences: sorted(value.facts.removedProposalOccurrences),
       provenanceChanges: sorted(value.facts.provenanceChanges),
       removedEntities: [...value.facts.removedEntities].sort(),
+      addedProposalEvidence: sorted(value.facts.addedProposalEvidence ?? []),
+      removedProposalEvidence: sorted(value.facts.removedProposalEvidence ?? []),
     },
   };
 }

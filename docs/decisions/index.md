@@ -16,3 +16,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [neutral-drift-emission](./neutral-drift-emission.md) | current | L3 neutral drift emission and trust-layer independence |
 | [observe-extract-diff](./observe-extract-diff.md) | current | Observe-extract-diff composition and typed extraction outcomes |
 | [schema-coverage](./schema-coverage.md) | current | Static schema-coverage drift check |
+| [semantic-review-work](./semantic-review-work.md) | current | Deterministic semantic proposal transitions as source-linked review work |

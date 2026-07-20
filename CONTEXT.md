@@ -90,6 +90,17 @@ results rather than throwing.
   classifications without provider names, messages, native diagnostics, or
   free-form extraction warnings; a
   first observation has a null prior identity and no fabricated comparison.
+- **Semantic review work** (`buildSemanticReviewWork`): a pure projection of
+  one genuine prior/current proposal transition into structurally
+  Survey-compatible `ReviewItem` resources. Added, removed, moved, and
+  value-changed and provenance-changed proposals are distinct; newly introduced declared-field
+  coverage gaps and exact-provenance gaps are explicit. Every item binds both
+  observation identities and preserves each available side's source snapshot,
+  locator, excerpt, extractor, and observation time. An absent side remains a
+  reviewable source-version candidate anchored to that observation's snapshot.
+  Stable proposal sets emit no work, and deterministic transition/item
+  identities make replay idempotent. Lookout imports no review package at
+  runtime and chooses no resolution, escalation, or authority policy.
 - **Consumer projection**: lifting emitted drift events into a Hachure
   `TrustBundle` (via `@kontourai/surface`'s `TrustBundleBuilder`) is a
   consumer/product responsibility. Lookout imports nothing from the trust layer
@@ -98,7 +109,8 @@ results rather than throwing.
 ## Boundary
 
 Lookout owns the registry, drift classification, deterministic proposal diff,
-proposal-observation continuity, neutral drift emission, injected
+proposal-observation continuity, neutral drift emission, semantic review-work
+shaping, injected
 observe-extract branching, and JSONL commands. Forage owns fetching, snapshot
 storage, and durable reference integrity; Traverse owns extraction. Trust-bundle authoring,
 Surface projection, notification, crawling, review/authority policy, and
