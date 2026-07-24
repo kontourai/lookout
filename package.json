@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/lookout",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A small source registry and drift-check runner built on Forage snapshots.",
   "license": "Apache-2.0",
   "type": "module",
