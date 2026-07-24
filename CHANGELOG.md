@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/kontourai/lookout/compare/v0.3.2...v0.3.3) (2026-07-24)
+
+
+### Fixes
+
+* align integration package generations ([#32](https://github.com/kontourai/lookout/issues/32)) ([d2c72c7](https://github.com/kontourai/lookout/commit/d2c72c70d0336c9cb542843f0ad24fe586595c88))
+
 ## [0.3.2](https://github.com/kontourai/lookout/compare/v0.3.1...v0.3.2) (2026-07-20)
 
 
