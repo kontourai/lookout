@@ -279,6 +279,40 @@ Forage's SSRF-guarded fetcher), `fetchOptions`, and
 `clock` — so checks run with no live network or timers in tests. Injecting either
 `fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
+### Bring your own source store
+
+The registry file is a convenience, not the contract. What check
+classification, drift emission, and observation lineage actually consume is
+source identity — enumerate sources, resolve one by exact id — and that
+contract is the `SourceStore` interface: `list()` and `get(id)`, each
+returning its value directly or as a promise. `LookoutRegistry` (what
+`loadRegistry` returns) is the file-backed implementation; nothing downstream
+can tell implementations apart.
+
+Two application shapes motivate the seam. An application whose canonical
+source of truth is its own database — reviewed rows in Postgres or D1, not a
+JSON file — builds `LookoutSource` values from those rows and should not have
+to adopt a second store of record to inherit lineage, continuity, and CHECK
+classification. And a host that owns its own acquisition and run state wants
+to hand Lookout sources it already holds in memory. Both were previously
+re-implementing identity handling around the registry; either can now do:
+
+```ts
+import { inMemorySourceStore } from "@kontourai/lookout";
+
+const store = inMemorySourceStore(sourcesBuiltFromYourRows);
+const results = await runner.checkAll(await store.list());
+```
+
+`inMemorySourceStore` applies exactly the validation `loadRegistry` applies
+to a file — duplicate ids, URL shape, per-kind field rules, every issue
+reported at once — so source-id uniqueness is enforced structurally rather
+than by review convention. A database-backed application can also implement
+`SourceStore` directly (both methods may be async) and query lazily;
+`runCli`'s `loadRegistry` option accepts any `SourceStore`. Keep ids stable
+either way: snapshot identity and observation lineage key off `id`, so
+changing one starts a new history.
+
 ## Observe changed sources without re-extracting unchanged ones
 
 `createObserveExtractDiff` is an optional library composition for callers that
