@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/kontourai/lookout/compare/v0.3.3...v0.3.4) (2026-07-27)
+
+
+### Fixes
+
+* **deps:** require forage 0.5.0 so consumers can withhold validators ([#38](https://github.com/kontourai/lookout/issues/38)) ([90200b1](https://github.com/kontourai/lookout/commit/90200b1e94564ec05f47301a50b069fd73db75d1))
+
 ## [0.3.3](https://github.com/kontourai/lookout/compare/v0.3.2...v0.3.3) (2026-07-24)
 
 
