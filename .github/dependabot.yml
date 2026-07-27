@@ -1,0 +1,35 @@
+# Nothing was watching dependencies here, and it showed: consuming
+# applications drifted a full major behind, and five repositories sat on a
+# stale pinned action SHA for weeks. Both were found by hand, late, while
+# chasing something else.
+#
+# Two ecosystems, because both failure modes happened:
+#   - npm, for the sibling packages this one pins exactly. An exact pin means
+#     no consumer can reach an upstream capability until this repo moves, so a
+#     stale pin here is a silent block downstream rather than a local nicety.
+#   - github-actions, for pinned reusable-action SHAs. Those are pinned by
+#     digest for supply-chain reasons and therefore never float — an
+#     improvement upstream reaches nobody until the pin is bumped.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      # One PR for the portfolio rather than one per package: these move
+      # together and are verified together.
+      kontourai:
+        patterns:
+          - "@kontourai/*"
+      dev-dependencies:
+        dependency-type: development
+        exclude-patterns:
+          - "@kontourai/*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
