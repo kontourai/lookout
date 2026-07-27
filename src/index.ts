@@ -19,6 +19,8 @@ export {
   parseRegistry,
   RegistryValidationError,
 } from "./registry.js";
+export { inMemorySourceStore } from "./source-store.js";
+export type { SourceStore } from "./source-store.js";
 export type {
   ExtractableLookoutSource,
   LookoutRegistryDocument,

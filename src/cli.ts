@@ -2,7 +2,8 @@ import type { Writable } from "node:stream";
 import { open } from "node:fs/promises";
 import type { ExtractionProposal } from "@kontourai/traverse";
 import { createCheckRunner, type CheckRunner } from "./check-runner.js";
-import { loadRegistry, type LookoutRegistry } from "./registry.js";
+import { loadRegistry } from "./registry.js";
+import type { SourceStore } from "./source-store.js";
 import { createLookoutSnapshotStore } from "./snapshot-store.js";
 import { createObservationStore } from "./observation-store.js";
 import { createDriftEmitter, type DriftResult } from "./drift-emission.js";
@@ -12,10 +13,14 @@ export interface RunCliOptions {
   argv?: string[];
   stdout?: Pick<Writable, "write">;
   stderr?: Pick<Writable, "write">;
-  loadRegistry?: (path?: string) => Promise<LookoutRegistry>;
+  // Method syntax (not arrow-property syntax) on the two seams below is
+  // deliberate: it keeps existing injections typed against the concrete
+  // LookoutRegistry assignable now that the declared type is the wider
+  // SourceStore (method parameters are checked bivariantly).
+  loadRegistry?(path?: string): Promise<SourceStore>;
   runner?: CheckRunner;
   readObservation?: (path: string) => Promise<unknown>;
-  emitDrift?: (sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string) => Promise<DriftResult>;
+  emitDrift?(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string): Promise<DriftResult>;
 }
 
 export async function runCli(options: RunCliOptions = {}): Promise<number> {
@@ -29,21 +34,21 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 2;
   }
 
-  let registry: LookoutRegistry;
+  let store: SourceStore;
   try {
-    registry = await (options.loadRegistry ?? loadRegistry)(parsed.registryPath);
+    store = await (options.loadRegistry ?? loadRegistry)(parsed.registryPath);
   } catch (error) {
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
 
   if (parsed.command === "emit-drift") {
-    const source = registry.get(parsed.id);
+    const source = await store.get(parsed.id);
     if (!source) { stderr.write(`Unknown source id: ${parsed.id}\n`); return 1; }
     let value: unknown;
     try { value = await (options.readObservation ?? readObservation)(parsed.observationPath); }
     catch (error) { stderr.write(`Could not read observation: ${error instanceof Error ? error.message : String(error)}\n`); return 1; }
-    const result = await (options.emitDrift ?? emitDrift)(parsed.id, value, registry, parsed.observationRoot);
+    const result = await (options.emitDrift ?? emitDrift)(parsed.id, value, store, parsed.observationRoot);
     if (!result.ok) { stderr.write(`${result.error.kind}: ${result.error.message}\n`); return 1; }
     stdout.write(`${JSON.stringify(result.value)}\n`);
     return 0;
@@ -54,12 +59,12 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
   });
 
   if (parsed.all) {
-    const results = await runner.checkAll(registry.list());
+    const results = await runner.checkAll(await store.list());
     for (const result of results) stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
 
-  const source = registry.get(parsed.id as string);
+  const source = await store.get(parsed.id as string);
   if (!source) {
     stderr.write(`Unknown source id: ${parsed.id}\n`);
     return 1;
@@ -147,9 +152,9 @@ function cliEntities(observation: ProposalSetObservation): readonly CliEntity[] 
   }
   return [...grouped].map(([key, proposals]) => ({ key, proposals }));
 }
-async function emitDrift(sourceId: string, value: unknown, registry: LookoutRegistry, observationRoot?: string): Promise<DriftResult> {
+async function emitDrift(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string): Promise<DriftResult> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: { kind: "invalid-input", message: "Observation document must be an object" } };
   const document = value as { observation?: ProposalSetObservation; check?: import("./observation-store.js").ObservationCheckAnchor };
-  const source = registry.get(sourceId)!;
+  const source = (await store.get(sourceId))!;
   return createDriftEmitter<CliEntity>({ store: createObservationStore({ root: observationRoot }) }).emit({ source, current: document.observation as ProposalSetObservation, check: document.check as import("./observation-store.js").ObservationCheckAnchor, callbacks: { selectEntities: cliEntities, entityIdentity: (entity) => entity.key, proposalsFor: (entity) => entity.proposals, fieldIdentity: (_entity, proposal) => proposal.fieldPath } });
 }
