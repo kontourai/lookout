@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/kontourai/lookout/compare/v0.3.4...v0.3.5) (2026-07-28)
+
+
+### Features
+
+* pluggable SourceStore seam with in-memory construction ([#36](https://github.com/kontourai/lookout/issues/36)) ([#48](https://github.com/kontourai/lookout/issues/48)) ([decc351](https://github.com/kontourai/lookout/commit/decc35139a15d41a950429344bdfd1c9f9380845))
+
 ## [0.3.4](https://github.com/kontourai/lookout/compare/v0.3.3...v0.3.4) (2026-07-27)
 
 
