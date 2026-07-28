@@ -41,7 +41,9 @@
     "check:decisions": "node scripts/check-decisions.cjs check",
     "gen:decisions-index": "node scripts/check-decisions.cjs gen-index",
     "check:pack": "node scripts/check-package-contents.mjs",
-    "check:consumer": "node scripts/check-installed-consumer.mjs"
+    "check:consumer": "node scripts/check-installed-consumer.mjs",
+    "workflow:sidecar": "flow-agents-workflow-sidecar",
+    "workflow:validate-artifacts": "flow-agents-validate-artifacts"
   },
   "dependencies": {
     "@kontourai/datum": "0.7.0",
@@ -49,6 +51,7 @@
     "@kontourai/traverse": "0.25.0"
   },
   "devDependencies": {
+    "@kontourai/flow-agents": "5.5.0",
     "@kontourai/survey": "2.4.0",
     "@types/node": "^26.1.2",
     "typescript": "^7.0.2"
