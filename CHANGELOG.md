@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/kontourai/lookout/compare/v0.3.6...v0.3.7) (2026-08-02)
+
+
+### Features
+
+* **kit:** declare builder.build workflow routing ([#61](https://github.com/kontourai/lookout/issues/61)) ([560e709](https://github.com/kontourai/lookout/commit/560e7097356a491a2a84bf9a8fc5cf26426e65d6))
+
 ## [0.3.6](https://github.com/kontourai/lookout/compare/v0.3.5...v0.3.6) (2026-08-02)
 
 
