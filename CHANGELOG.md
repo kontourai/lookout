@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/kontourai/lookout/compare/v0.3.5...v0.3.6) (2026-08-02)
+
+
+### Fixes
+
+* fail the test suite when zero test files are discovered ([#59](https://github.com/kontourai/lookout/issues/59)) ([07d3946](https://github.com/kontourai/lookout/commit/07d3946c17adf04d24a08344ce367d78a18ba3cd)), closes [#55](https://github.com/kontourai/lookout/issues/55)
+
 ## [0.3.5](https://github.com/kontourai/lookout/compare/v0.3.4...v0.3.5) (2026-07-28)
 
 
