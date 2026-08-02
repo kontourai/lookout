@@ -34,6 +34,12 @@ Exemplars: kontourai/traverse (deps + subpaths) and kontourai/datum (zero-dep + 
 }
 ```
 
+> **Do not copy the `test` script above.** `node --test dist/tests/*.test.js` exits
+> 0 when the glob matches nothing — `sh` passes an unmatched glob through
+> literally and the runner then executes zero tests and reports success. Use
+> `node scripts/run-tests.mjs` (see lookout's copy), which discovers the compiled
+> test files itself and fails below a declared floor. See kontourai/lookout#55.
+
 Dependency notes:
 - `@kontourai/traverse` ^0.8.0 and `@kontourai/survey` ^1.5.0 are on npm.
 - `@kontourai/datum` (0.3.0) is NOT yet published — declare as `"@kontourai/datum": "github:kontourai/datum"`. Its README's stated interim consumption mode is "from the repo".
