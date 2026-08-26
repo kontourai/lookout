@@ -38,9 +38,9 @@ test("admission authenticates an actual Forage same-host redirect capture and ex
     assert.equal(emitted.ok, true); if (!emitted.ok) return;
     const fact = emitted.value.facts[0]!;
     assert.equal(fact.kind, "baseline-established"); if (fact.kind !== "baseline-established") return;
-    const require = createRequire(import.meta.url); const Ajv2020 = require("ajv/dist/2020.js") as new (options: { strict: boolean }) => { addSchema(schema: object): void; getSchema(id: string): ((value: unknown) => boolean) | undefined };
+    const require = createRequire(import.meta.url); const Ajv2020 = require("ajv/dist/2020.js") as new (options: { strict: boolean }) => { addSchema(schema: object): void; addFormat(...args: unknown[]): unknown; getSchema(id: string): ((value: unknown) => boolean) | undefined };
     const { schemas } = await import("hachure") as { schemas: Map<string, object> };
-    const ajv = new Ajv2020({ strict: false }); for (const schema of schemas.values()) ajv.addSchema(schema);
+    const ajv = new Ajv2020({ strict: false }); (require("ajv-formats") as (value: typeof ajv) => void)(ajv); for (const schema of schemas.values()) ajv.addSchema(schema);
     const validate = ajv.getSchema("https://hachure.org/schemas/evidence.schema.json");
     assert.ok(validate, "Hachure evidence validator compiled");
     assert.equal(validate({ id: "lookout:baseline", claimId: "drift:source-a", evidenceType: "runtime_observation", method: fact.resolution, sourceRef: fact.snapshotRef, excerptOrSummary: "baseline established", observedAt: fact.observedAt, collectedBy: "lookout" }), true);
@@ -55,6 +55,35 @@ test("malformed current reference is rejected before snapshot or observation-sto
   const bad = "forage-snapshot:source-a?url=https%3A%2F%2Fexample.test%2Fsource-a&sha256=deadbeef&fetchedAt=now";
   const result = await emitter.emit({ ...input(bad), callbacks: { selectEntities: () => [], entityIdentity: () => "x", proposalsFor: () => [], fieldIdentity: () => "x" } });
   assert.equal(result.ok, false); assert.equal(snapshotReads, 0); assert.equal(observationReads, 0);
+});
+
+test("emitter commits the invocation image when caller mutates current ref, anchor, and nested proposals while admission is deferred", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-admission-race-"));
+  try {
+    const body = "race"; const snapshot: Snapshot = { sourceId: "source-a", url: "https://example.test/start", status: 200, fetchedAt: "2026-08-26T00:00:00.000Z", body, bodyHash: createHash("sha256").update(body).digest("hex") };
+    const reference = buildSnapshotSourceRef(snapshot); let calls = 0; let release!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const snapshots: ExactSnapshotStore = { async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; }, async findExact() { calls++; if (calls === 2) await paused; return { kind: "found", snapshot }; } };
+    const store = createObservationStore({ root }); const document = input(reference);
+    const emitter = createDriftEmitter({ store, snapshotStore: snapshots });
+    const pending = emitter.emit({ ...document, callbacks: { selectEntities: () => [], entityIdentity: () => "entity", proposalsFor: () => [], fieldIdentity: () => "field" } });
+    while (calls < 2) await new Promise((resolve) => setImmediate(resolve));
+    (document.current as { snapshotRef: string }).snapshotRef = "forage-snapshot:source-a?url=https%3A%2F%2Fexample.test%2Fstart&sha256=deadbeef&fetchedAt=now";
+    (document.check as { currentSnapshotRef: string }).currentSnapshotRef = document.current.snapshotRef;
+    (document.current.proposals[0] as { candidateValue: string }).candidateValue = "mutated";
+    release(); const result = await pending;
+    assert.equal(result.ok, true); if (!result.ok) return;
+    assert.equal(result.value.committedObservation.snapshotRef, reference);
+    assert.equal(result.value.committedObservation.proposals[0]?.candidateValue, "x");
+    const latest = await store.loadLatest("source-a"); assert.equal(latest.ok, true); if (latest.ok) assert.equal(latest.value?.snapshotRef, reference);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("admission contains undefined and malformed prior state without capability I/O", async () => {
+  let reads = 0; const snapshots: ExactSnapshotStore = { async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; }, async findExact() { reads++; return { kind: "missing" }; } };
+  const undefinedResult = await admitProposalObservation(undefined as never); assert.equal(undefinedResult.ok, false);
+  const malformed = await admitProposalObservation({ ...input("forage-snapshot:source-a?url=https%3A%2F%2Fexample.test%2Fstart&sha256=deadbeef&fetchedAt=now"), prior: { sourceId: "source-a", snapshotRef: "x", check: undefined } as never, snapshotStore: snapshots });
+  assert.equal(malformed.ok, false); assert.equal(reads, 0);
 });
 
 test("legacy redirect references fail closed while a direct legacy capture remains explicitly lower assurance", async () => {

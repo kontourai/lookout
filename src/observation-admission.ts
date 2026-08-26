@@ -45,7 +45,13 @@ export interface AdmitProposalObservationInput {
  * snapshot bodies nor reads/writes the observation store.
  */
 export async function admitProposalObservation(input: AdmitProposalObservationInput): Promise<ObservationAdmissionResult> {
-  if (!input.source || !input.current || !input.check || !input.snapshotStore ||
+  try { return await admit(input); }
+  catch { return failure("invalid-input", "source-identity", "Observation admission input is malformed"); }
+}
+
+async function admit(input: AdmitProposalObservationInput): Promise<ObservationAdmissionResult> {
+  if (!input || typeof input !== "object" || !input.source || typeof input.source !== "object" || !input.current || typeof input.current !== "object" || !input.check || typeof input.check !== "object" || !input.snapshotStore || typeof input.snapshotStore !== "object" ||
+    typeof input.source.id !== "string" || typeof input.source.url !== "string" || typeof input.current.sourceId !== "string" || typeof input.current.snapshotRef !== "string" || typeof input.check.currentSnapshotRef !== "string" ||
     input.source.id !== input.current.sourceId || input.check.currentSnapshotRef !== input.current.snapshotRef) {
     return failure("invalid-input", "source-identity", "Registry source, observation, and check anchor must agree");
   }
@@ -62,7 +68,8 @@ export async function admitProposalObservation(input: AdmitProposalObservationIn
   if (currentBinding !== null) return currentBinding;
 
   if (input.prior === null) return { ok: true, value: { current: identity(input.current.snapshotRef, current), prior: null } };
-  if (input.prior.sourceId !== input.source.id || input.prior.check.currentSnapshotRef !== input.prior.snapshotRef) {
+  if (!input.prior || typeof input.prior !== "object" || typeof input.prior.sourceId !== "string" || typeof input.prior.snapshotRef !== "string" || !input.prior.check || typeof input.prior.check !== "object" || typeof input.prior.check.currentSnapshotRef !== "string" ||
+    input.prior.sourceId !== input.source.id || input.prior.check.currentSnapshotRef !== input.prior.snapshotRef) {
     return failure("invalid-input", "source-identity", "Prior observation identity is not valid for the registered source");
   }
   const prior = await resolveLookoutSnapshot(input.prior.snapshotRef, { store: input.snapshotStore });
