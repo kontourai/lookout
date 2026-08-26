@@ -103,11 +103,18 @@ function canonical(value: unknown): string { return `${JSON.stringify(stable(val
 function digest(body: Omit<StoredProposalObservationV1, "observationId">): string { return createHash("sha256").update(canonical(body)).digest("hex"); }
 
 function resolveHeadLimits(limits: VerifiedHeadLimits | undefined): ResolvedHeadLimits | null {
+  if (limits !== undefined && (!limits || typeof limits !== "object" || Array.isArray(limits))) return null;
+  let supplied: Record<string, unknown>;
+  try {
+    const descriptors = limits === undefined ? {} : Object.getOwnPropertyDescriptors(limits);
+    if (Object.keys(descriptors).some((key) => !Object.hasOwn(VERIFIED_HEAD_MAX, key) || descriptors[key]?.get || descriptors[key]?.set)) return null;
+    supplied = Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value]));
+  } catch { return null; }
   const resolved = { ...VERIFIED_HEAD_MAX };
   for (const key of Object.keys(VERIFIED_HEAD_MAX) as Array<keyof ResolvedHeadLimits>) {
-    const value = limits?.[key];
+    const value = supplied[key];
     if (value === undefined) continue;
-    if (!Number.isSafeInteger(value) || value <= 0 || value > VERIFIED_HEAD_MAX[key]) return null;
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > VERIFIED_HEAD_MAX[key]) return null;
     resolved[key] = value;
   }
   return resolved;
@@ -192,14 +199,18 @@ async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadL
   return { kind: "ready", metadata: { root: identity(rootStats), rootRealpath, source: identity(sourceStats), names, pointer: pointerRead.text, pointerIdentity: pointerRead.identity, observationId: pointer.observationId, record: identity(recordStats) } };
 }
 
-function snapshotWitness(value: unknown): ProposalHeadWitnessV1 | null {
+function snapshotWitness(value: unknown): { readonly kind: "ok"; readonly witness: ProposalHeadWitnessV1 } | { readonly kind: "corrupt" | "unsupported" } {
   try {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const witness = value as Record<string, unknown>;
-    if (Object.keys(witness).length !== 5 || Object.keys(witness).some((key) => !["kind", "version", "sourceId", "observationId", "token"].includes(key))) return null;
-    if (witness.kind !== "lookout.proposal-head-witness/v1" || witness.version !== 1 || !boundedSourceId(witness.sourceId) || typeof witness.observationId !== "string" || !/^[a-f0-9]{64}$/.test(witness.observationId) || typeof witness.token !== "string" || !/^[a-f0-9]{64}$/.test(witness.token)) return null;
-    return { kind: witness.kind, version: witness.version, sourceId: witness.sourceId, observationId: witness.observationId, token: witness.token };
-  } catch { return null; }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "corrupt" };
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = ["kind", "version", "sourceId", "observationId", "token"];
+    if (Object.keys(descriptors).length !== keys.length || keys.some((key) => !Object.hasOwn(descriptors, key) || descriptors[key]?.get || descriptors[key]?.set)) return { kind: "corrupt" };
+    const witness = Object.fromEntries(keys.map((key) => [key, descriptors[key]!.value])) as Record<string, unknown>;
+    if (witness.kind !== "lookout.proposal-head-witness/v1" || typeof witness.version !== "number") return { kind: "unsupported" };
+    if (witness.version !== 1) return { kind: "unsupported" };
+    if (!boundedSourceId(witness.sourceId) || typeof witness.observationId !== "string" || !/^[a-f0-9]{64}$/.test(witness.observationId) || typeof witness.token !== "string" || !/^[a-f0-9]{64}$/.test(witness.token)) return { kind: "corrupt" };
+    return { kind: "ok", witness: { kind: witness.kind, version: witness.version, sourceId: witness.sourceId, observationId: witness.observationId, token: witness.token } };
+  } catch { return { kind: "corrupt" }; }
 }
 
 function buildRecord(input: ProposalObservationRecordInput): ObservationStoreResult<StoredProposalObservationV1> {
@@ -261,7 +272,7 @@ async function atomicWrite(file: string, bytes: string, kind: "record" | "pointe
 }
 
 export function createObservationStore(options: CreateObservationStoreOptions = {}): ObservationStore & VerifiedHeadObservationStore {
-  const root = options.root ?? path.join(process.cwd(), ".kontourai", "lookout", "observations");
+  const root = path.resolve(options.root ?? path.join(process.cwd(), ".kontourai", "lookout", "observations"));
   async function loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservationV1 | null>> {
     try {
       const dir = path.join(root, sourceKey(sourceId));
@@ -346,14 +357,14 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
 
   async function compareHeadWitness(witness: ProposalHeadWitnessV1, suppliedLimits?: VerifiedHeadLimits): Promise<HeadWitnessComparison> {
     const captured = snapshotWitness(witness);
-    if (captured === null) return { kind: "corrupt" };
+    if (captured.kind !== "ok") return captured;
     const limits = resolveHeadLimits(suppliedLimits);
     if (limits === null) return { kind: "unsupported" };
-    const inspected = await inspectHead(root, captured.sourceId, limits);
+    const inspected = await inspectHead(root, captured.witness.sourceId, limits);
     if (inspected.kind !== "ready") return inspected;
-    if (inspected.metadata.observationId !== captured.observationId) return { kind: "changed" };
-    return headToken(inspected.metadata.rootRealpath, captured.sourceId, inspected.metadata) === captured.token
-      ? { kind: "matches", sourceId: captured.sourceId, observationId: captured.observationId }
+    if (inspected.metadata.observationId !== captured.witness.observationId) return { kind: "changed" };
+    return headToken(inspected.metadata.rootRealpath, captured.witness.sourceId, inspected.metadata) === captured.witness.token
+      ? { kind: "matches", sourceId: captured.witness.sourceId, observationId: captured.witness.observationId }
       : { kind: "changed" };
   }
   return { loadLatest, commit, readVerifiedHead, compareHeadWitness };
