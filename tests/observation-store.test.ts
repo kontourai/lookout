@@ -214,6 +214,19 @@ test("head witness rejects pending, incomplete, symlinked, and over-limit metada
   } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
+test("valid heads exceeding caller byte limits are unavailable without changing the store", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const store = createObservationStore({ root }); const committed = await store.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const normal = await store.readVerifiedHead("source-a"); assert.equal(normal.kind, "verified"); if (normal.kind !== "verified") return;
+    const pointer = path.join(root, committed.value.sourceKey, "latest.json"); const before = await readFile(pointer, "utf8");
+    assert.deepEqual(await store.readVerifiedHead("source-a", { maxRecordBytes: 1 }), { kind: "unavailable" });
+    assert.deepEqual(await store.compareHeadWitness(normal.witness, { maxPointerBytes: 1 }), { kind: "unavailable" });
+    assert.equal(await readFile(pointer, "utf8"), before);
+    assert.equal((await store.readVerifiedHead("source-a")).kind, "verified");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("head read fence rejects an ABA pointer replacement around strong record authentication", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
   try {

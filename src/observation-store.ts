@@ -141,7 +141,8 @@ async function boundedText(file: string, maximum: number): Promise<{ readonly ki
   let handle;
   try {
     const before = await lstatHead(file);
-    if (before.isSymbolicLink() || !before.isFile() || before.size > BigInt(maximum)) return { kind: "corrupt" };
+    if (before.isSymbolicLink() || !before.isFile()) return { kind: "corrupt" };
+    if (before.size > BigInt(maximum)) return { kind: "unavailable" };
     handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat({ bigint: true });
     if (!opened.isFile() || !sameIdentity(identity(before), identity(opened)) || opened.size > BigInt(maximum)) return { kind: "unavailable" };
@@ -195,7 +196,8 @@ async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadL
   if (!names.includes(recordName)) return { kind: "corrupt" };
   let recordStats;
   try { recordStats = await lstatHead(path.join(dir, recordName)); } catch { return { kind: "unavailable" }; }
-  if (recordStats.isSymbolicLink() || !recordStats.isFile() || recordStats.size > BigInt(limits.maxRecordBytes)) return { kind: "corrupt" };
+  if (recordStats.isSymbolicLink() || !recordStats.isFile()) return { kind: "corrupt" };
+  if (recordStats.size > BigInt(limits.maxRecordBytes)) return { kind: "unavailable" };
   let finalRoot; let finalSource;
   try { finalRoot = await lstatHead(root); finalSource = await lstatHead(dir); } catch { return { kind: "unavailable" }; }
   if (!sameIdentity(identity(rootStats), identity(finalRoot)) || !sameIdentity(identity(sourceStats), identity(finalSource))) return { kind: "unavailable" };
