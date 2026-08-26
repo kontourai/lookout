@@ -72,16 +72,28 @@ function validSource(source: LookoutSource): boolean {
 }
 
 function validCheck(source: LookoutSource, check: CheckResult): boolean {
-  if (!check || typeof check !== "object" || check.sourceId !== source.id || check.sourceUrl !== source.url ||
-    !validTimestamp(check.checkedAt) || !Array.isArray(check.warnings) || check.warnings.some((item) => typeof item !== "string")) return false;
-  if (check.kind === "unchanged-304") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "snapshotRef"]) && typeof check.snapshotRef === "string";
-  if (check.kind === "unchanged-hash") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "priorSnapshotRef", "currentSnapshotRef"]) && typeof check.priorSnapshotRef === "string" && typeof check.currentSnapshotRef === "string";
-  if (check.kind === "changed") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "priorSnapshotRef", "currentSnapshotRef", "changeBasis"]) && typeof check.currentSnapshotRef === "string" && (check.changeBasis === "initial" || check.changeBasis === "hash") && (check.changeBasis === "initial" ? check.priorSnapshotRef === null : typeof check.priorSnapshotRef === "string");
+  if (!check || typeof check !== "object" || Array.isArray(check)) return false;
+  const common = () => check.sourceId === source.id && check.sourceUrl === source.url && validTimestamp(check.checkedAt) && validWarnings(check.warnings);
+  if (check.kind === "unchanged-304") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "snapshotRef"]) && common() && typeof check.snapshotRef === "string";
+  if (check.kind === "unchanged-hash") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "priorSnapshotRef", "currentSnapshotRef"]) && common() && typeof check.priorSnapshotRef === "string" && typeof check.currentSnapshotRef === "string";
+  if (check.kind === "changed") return closed(check, ["sourceId", "sourceUrl", "checkedAt", "warnings", "kind", "priorSnapshotRef", "currentSnapshotRef", "changeBasis"]) && common() && typeof check.currentSnapshotRef === "string" && (check.changeBasis === "initial" || check.changeBasis === "hash") && (check.changeBasis === "initial" ? check.priorSnapshotRef === null : typeof check.priorSnapshotRef === "string");
   return false;
 }
 
 function closed(value: object, keys: readonly string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
+  if (Object.getPrototypeOf(value) !== Object.prototype) return false;
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function validWarnings(value: unknown): value is readonly string[] {
+  if (!Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.length !== value.length) return false;
+  for (let index = 0; index < value.length; index++) {
+    if (!Object.hasOwn(value, index) || typeof value[index] !== "string") return false;
+  }
+  return true;
 }
 
 function validTimestamp(value: unknown): value is string {
