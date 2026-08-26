@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/kontourai/lookout/compare/v0.3.6...v0.4.0) (2026-08-26)
+
+
+### Features
+
+* **kit:** declare builder.build workflow routing ([#61](https://github.com/kontourai/lookout/issues/61)) ([560e709](https://github.com/kontourai/lookout/commit/560e7097356a491a2a84bf9a8fc5cf26426e65d6))
+
+
+### Fixes
+
+* preserve corrupt snapshot prior failures ([#67](https://github.com/kontourai/lookout/issues/67)) ([47349bb](https://github.com/kontourai/lookout/commit/47349bbd292139850f12a4cf4b19802ff813e2ab))
+
 ## [0.3.6](https://github.com/kontourai/lookout/compare/v0.3.5...v0.3.6) (2026-08-02)
 
 
