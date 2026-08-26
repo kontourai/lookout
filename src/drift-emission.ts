@@ -1,6 +1,8 @@
 import type { LookoutSource } from "./registry.js";
 import { diffProposalSets, type ProposalDiffEvent, type ProposalSetDiff, type ProposalSetDiffInput, type ProposalSetFacts, type ProposalSetObservation } from "./proposal-diff.js";
 import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservationV1 } from "./observation-store.js";
+import type { SnapshotStore } from "@kontourai/forage";
+import { admitProposalObservation } from "./observation-admission.js";
 
 // Neutral drift emission. Lookout is a CHANGE building block: it detects and
 // reports drift in its own vocabulary and depends on NOTHING in the trust layer
@@ -60,6 +62,8 @@ export interface DriftEmitter<E> {
 }
 export interface CreateDriftEmitterOptions<E> {
   readonly store: ObservationStore;
+  /** Required explicit capability for authenticating durable snapshot references. */
+  readonly snapshotStore: SnapshotStore;
   readonly now?: () => string;
   readonly diff?: (input: ProposalSetDiffInput<E>) => { readonly ok: true; readonly value: ProposalSetDiff } | { readonly ok: false; readonly error: { readonly message: string } };
 }
@@ -94,8 +98,14 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
         if (!input.source || input.source.id !== input.current?.sourceId || input.check?.currentSnapshotRef !== input.current?.snapshotRef) {
           return { ok: false, error: { kind: "invalid-input", message: "Registry source, observation, and check anchor must agree" } };
         }
+        // Admit the current reference before continuity I/O.  In particular,
+        // Forage rejects a malformed digest before findExact/loadLatest runs.
+        const currentAdmission = await admitProposalObservation({ source: input.source, current: input.current, check: input.check, prior: null, snapshotStore: options.snapshotStore });
+        if (!currentAdmission.ok) return { ok: false, error: { kind: "invalid-input", message: "Current observation could not be admitted" } };
         const loaded = await options.store.loadLatest(input.source.id);
         if (!loaded.ok) return { ok: false, error: { kind: "prior-state-error", message: loaded.error.message, cause: loaded.error } };
+        const admission = await admitProposalObservation({ source: input.source, current: input.current, check: input.check, prior: loaded.value, snapshotStore: options.snapshotStore });
+        if (!admission.ok) return { ok: false, error: { kind: admission.error.kind === "prior-unresolved" ? "prior-state-error" : "invalid-input", message: "Observation could not be admitted" } };
 
         const recordedAt = now();
         const priorObservationId = loaded.value?.observationId ?? null;

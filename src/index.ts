@@ -35,6 +35,8 @@ export {
   resolveLookoutSnapshot,
 } from "./snapshot-store.js";
 export type { ResolveLookoutSnapshotOptions } from "./snapshot-store.js";
+export { admitProposalObservation } from "./observation-admission.js";
+export type { AdmitProposalObservationInput, AdmittedProposalObservation, AdmittedSnapshotIdentity, ObservationAdmissionError, ObservationAdmissionErrorKind, ObservationAdmissionResult } from "./observation-admission.js";
 export type { SnapshotSourceRefResolution } from "@kontourai/forage/fetch";
 export { canonicalValueKey } from "./canonical-value.js";
 export type {
