@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, open, readFile, readdir, rename, rm, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { ExtractionProposal } from "@kontourai/traverse";
 import type { ProposalSetObservation } from "./proposal-diff.js";
@@ -37,6 +38,36 @@ export interface ObservationStore {
   commit(input: ProposalObservationRecordInput, expectedPriorId: string | null): Promise<ObservationStoreResult<StoredProposalObservationV1>>;
 }
 
+/** Finite caller-controlled ceilings for a verified proposal-head read. */
+export interface VerifiedHeadLimits {
+  readonly maxEntries?: number;
+  readonly maxIndexBytes?: number;
+  readonly maxPointerBytes?: number;
+  readonly maxRecordBytes?: number;
+}
+
+export interface ProposalHeadWitnessV1 {
+  readonly kind: "lookout.proposal-head-witness/v1";
+  readonly version: 1;
+  readonly sourceId: string;
+  readonly observationId: string;
+  /** Opaque binding of this store scope and its bounded metadata-as-of state. */
+  readonly token: string;
+}
+
+export type VerifiedHeadRead =
+  | { readonly kind: "verified"; readonly sourceId: string; readonly observationId: string; readonly snapshotRef: string; readonly witness: ProposalHeadWitnessV1 }
+  | { readonly kind: "missing" | "unavailable" | "corrupt" | "unsupported" };
+export type HeadWitnessComparison =
+  | { readonly kind: "matches"; readonly sourceId: string; readonly observationId: string }
+  | { readonly kind: "changed" | "missing" | "unavailable" | "corrupt" | "unsupported" };
+
+/** Additive concrete-store capability. Generic ObservationStore implementations need not provide it. */
+export interface VerifiedHeadObservationStore {
+  readVerifiedHead(sourceId: string, limits?: VerifiedHeadLimits): Promise<VerifiedHeadRead>;
+  compareHeadWitness(witness: ProposalHeadWitnessV1, limits?: VerifiedHeadLimits): Promise<HeadWitnessComparison>;
+}
+
 export interface ObservationStoreFaults {
   readonly beforeSerialize?: () => void;
   readonly beforeTempWrite?: (kind: "record" | "pointer") => void;
@@ -45,8 +76,18 @@ export interface ObservationStoreFaults {
   readonly beforePointerRename?: () => void;
   readonly beforeDirectorySync?: (kind: "record" | "pointer") => void;
   readonly beforePrune?: () => void;
+  /** Test-only fence hooks; production callers do not supply them. */
+  readonly beforeHeadStrongLoad?: () => void;
+  readonly beforeHeadRecordRead?: () => void;
+  readonly beforeHeadAfterFence?: () => void;
 }
 export interface CreateObservationStoreOptions { readonly root?: string; readonly faults?: ObservationStoreFaults }
+
+const VERIFIED_HEAD_MAX: Readonly<{ maxEntries: number; maxIndexBytes: number; maxPointerBytes: number; maxRecordBytes: number }> = Object.freeze({ maxEntries: 8, maxIndexBytes: 8 * 1024, maxPointerBytes: 8 * 1024, maxRecordBytes: 1024 * 1024 });
+type ResolvedHeadLimits = typeof VERIFIED_HEAD_MAX;
+type FileIdentity = Readonly<{ dev: string; ino: string; mode: string; size: string; ctimeNs: string; mtimeNs: string }>;
+type HeadMetadata = Readonly<{ root: FileIdentity; rootRealpath: string; source: FileIdentity; names: readonly string[]; pointer: string; observationId: string; record: FileIdentity }>;
+type HeadInspection = { readonly kind: "ready"; readonly metadata: HeadMetadata } | { readonly kind: "missing" | "unavailable" | "corrupt" | "unsupported" };
 
 function sourceKey(sourceId: string): string {
   return `${encodeURIComponent(sourceId).replaceAll("%", "_").slice(0, 48)}-${createHash("sha256").update(sourceId).digest("hex").slice(0, 16)}`;
@@ -60,6 +101,88 @@ function stable(value: unknown): unknown {
 
 function canonical(value: unknown): string { return `${JSON.stringify(stable(value))}\n`; }
 function digest(body: Omit<StoredProposalObservationV1, "observationId">): string { return createHash("sha256").update(canonical(body)).digest("hex"); }
+
+function resolveHeadLimits(limits: VerifiedHeadLimits | undefined): ResolvedHeadLimits | null {
+  const resolved = { ...VERIFIED_HEAD_MAX };
+  for (const key of Object.keys(VERIFIED_HEAD_MAX) as Array<keyof ResolvedHeadLimits>) {
+    const value = limits?.[key];
+    if (value === undefined) continue;
+    if (!Number.isSafeInteger(value) || value <= 0 || value > VERIFIED_HEAD_MAX[key]) return null;
+    resolved[key] = value;
+  }
+  return resolved;
+}
+
+async function lstatHead(file: string) { return lstat(file, { bigint: true }); }
+function identity(stats: Awaited<ReturnType<typeof lstatHead>>): FileIdentity {
+  return { dev: String(stats.dev), ino: String(stats.ino), mode: String(stats.mode), size: String(stats.size), ctimeNs: String(stats.ctimeNs), mtimeNs: String(stats.mtimeNs) };
+}
+function sameIdentity(left: FileIdentity, right: FileIdentity): boolean { return canonical(left) === canonical(right); }
+function headToken(rootRealpath: string, sourceId: string, metadata: HeadMetadata): string {
+  return createHash("sha256").update(canonical({ kind: "lookout.proposal-head-witness/v1", version: 1, rootRealpath, sourceId, metadata })).digest("hex");
+}
+function errno(cause: unknown): string | undefined { return (cause as NodeJS.ErrnoException | undefined)?.code; }
+
+async function boundedText(file: string, maximum: number): Promise<{ readonly kind: "ok"; readonly text: string } | { readonly kind: "unavailable" | "corrupt" }> {
+  let handle;
+  try {
+    const before = await lstatHead(file);
+    if (before.isSymbolicLink() || !before.isFile() || before.size > BigInt(maximum)) return { kind: "corrupt" };
+    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const opened = await handle.stat({ bigint: true });
+    if (!opened.isFile() || !sameIdentity(identity(before), identity(opened)) || opened.size > BigInt(maximum)) return { kind: "unavailable" };
+    const buffer = Buffer.alloc(Number(opened.size) + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const after = await handle.stat({ bigint: true });
+    if (!sameIdentity(identity(opened), identity(after)) || bytesRead !== Number(opened.size) || bytesRead > maximum) return { kind: "unavailable" };
+    return { kind: "ok", text: buffer.subarray(0, bytesRead).toString("utf8") };
+  } catch (cause) { return errno(cause) === "ENOENT" ? { kind: "unavailable" } : { kind: "unavailable" }; }
+  finally { await handle?.close().catch(() => undefined); }
+}
+
+async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadLimits): Promise<HeadInspection> {
+  let key: string;
+  try { key = sourceKey(sourceId); } catch { return { kind: "unsupported" }; }
+  let rootStats;
+  try { rootStats = await lstatHead(root); } catch (cause) { return errno(cause) === "ENOENT" ? { kind: "missing" } : { kind: "unavailable" }; }
+  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) return { kind: "corrupt" };
+  let rootRealpath: string;
+  try { rootRealpath = await realpath(root); } catch { return { kind: "unavailable" }; }
+  const dir = path.join(root, key);
+  let sourceStats;
+  try { sourceStats = await lstatHead(dir); } catch (cause) { return errno(cause) === "ENOENT" ? { kind: "missing" } : { kind: "unavailable" }; }
+  if (sourceStats.isSymbolicLink() || !sourceStats.isDirectory()) return { kind: "corrupt" };
+  const names: string[] = [];
+  let indexBytes = 0;
+  try {
+    const directory = await opendir(dir, { bufferSize: 1 });
+    try {
+      for await (const entry of directory) {
+        if (names.length >= limits.maxEntries) return { kind: "unavailable" };
+        indexBytes += Buffer.byteLength(entry.name);
+        if (indexBytes > limits.maxIndexBytes) return { kind: "unavailable" };
+        if (entry.name === ".lock" || entry.name.includes(".tmp-")) return { kind: "unavailable" };
+        if (entry.name !== "latest.json" && !/^[a-f0-9]{64}\.json$/.test(entry.name)) return { kind: "corrupt" };
+        const entryStats = await lstatHead(path.join(dir, entry.name));
+        if (entryStats.isSymbolicLink() || !entryStats.isFile()) return { kind: "corrupt" };
+        names.push(entry.name);
+      }
+    } finally { await directory.close().catch(() => undefined); }
+  } catch { return { kind: "unavailable" }; }
+  names.sort();
+  if (!names.includes("latest.json")) return names.length === 0 ? { kind: "missing" } : { kind: "corrupt" };
+  const pointerRead = await boundedText(path.join(dir, "latest.json"), limits.maxPointerBytes);
+  if (pointerRead.kind !== "ok") return pointerRead;
+  let pointer: { version?: unknown; sourceId?: unknown; observationId?: unknown };
+  try { pointer = JSON.parse(pointerRead.text) as typeof pointer; } catch { return { kind: "corrupt" }; }
+  if (pointer.version !== 1 || pointer.sourceId !== sourceId || typeof pointer.observationId !== "string" || !/^[a-f0-9]{64}$/.test(pointer.observationId)) return { kind: "corrupt" };
+  const recordName = `${pointer.observationId}.json`;
+  if (!names.includes(recordName)) return { kind: "corrupt" };
+  let recordStats;
+  try { recordStats = await lstatHead(path.join(dir, recordName)); } catch { return { kind: "unavailable" }; }
+  if (recordStats.isSymbolicLink() || !recordStats.isFile() || recordStats.size > BigInt(limits.maxRecordBytes)) return { kind: "corrupt" };
+  return { kind: "ready", metadata: { root: identity(rootStats), rootRealpath, source: identity(sourceStats), names, pointer: pointerRead.text, observationId: pointer.observationId, record: identity(recordStats) } };
+}
 
 function buildRecord(input: ProposalObservationRecordInput): ObservationStoreResult<StoredProposalObservationV1> {
   try {
@@ -119,7 +242,7 @@ async function atomicWrite(file: string, bytes: string, kind: "record" | "pointe
   catch (error) { await handle.close().catch(() => undefined); await unlink(temp).catch(() => undefined); throw error; }
 }
 
-export function createObservationStore(options: CreateObservationStoreOptions = {}): ObservationStore {
+export function createObservationStore(options: CreateObservationStoreOptions = {}): ObservationStore & VerifiedHeadObservationStore {
   const root = options.root ?? path.join(process.cwd(), ".kontourai", "lookout", "observations");
   async function loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservationV1 | null>> {
     try {
@@ -179,5 +302,41 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
       return { ok: false, error: { kind: "io-error", message: "Could not commit observation", cause } };
     } finally { await lock.close().catch(() => undefined); await rm(lockPath, { force: true }).catch(() => undefined); }
   }
-  return { loadLatest, commit };
+
+  async function readVerifiedHead(sourceId: string, suppliedLimits?: VerifiedHeadLimits): Promise<VerifiedHeadRead> {
+    const limits = resolveHeadLimits(suppliedLimits);
+    if (limits === null) return { kind: "unsupported" };
+    const before = await inspectHead(root, sourceId, limits);
+    if (before.kind !== "ready") return before;
+    // This is the only body read in the witness API. It reuses the concrete store's
+    // authenticated record validator and is bracketed by metadata fences below.
+    options.faults?.beforeHeadStrongLoad?.();
+    options.faults?.beforeHeadRecordRead?.();
+    const record = await boundedText(path.join(root, sourceKey(sourceId), `${before.metadata.observationId}.json`), limits.maxRecordBytes);
+    if (record.kind !== "ok") return record;
+    let loaded: ObservationStoreResult<StoredProposalObservationV1>;
+    try { loaded = validate(JSON.parse(record.text), sourceId); }
+    catch { return { kind: "corrupt" }; }
+    if (!loaded.ok || loaded.value.observationId !== before.metadata.observationId) return { kind: "corrupt" };
+    options.faults?.beforeHeadAfterFence?.();
+    const after = await inspectHead(root, sourceId, limits);
+    if (after.kind !== "ready") return after;
+    if (canonical(before.metadata) !== canonical(after.metadata)) return { kind: "unavailable" };
+    const token = headToken(before.metadata.rootRealpath, sourceId, before.metadata);
+    return { kind: "verified", sourceId, observationId: loaded.value.observationId, snapshotRef: loaded.value.snapshotRef, witness: { kind: "lookout.proposal-head-witness/v1", version: 1, sourceId, observationId: loaded.value.observationId, token } };
+  }
+
+  async function compareHeadWitness(witness: ProposalHeadWitnessV1, suppliedLimits?: VerifiedHeadLimits): Promise<HeadWitnessComparison> {
+    if (!witness || typeof witness !== "object" || witness.kind !== "lookout.proposal-head-witness/v1" || witness.version !== 1) return { kind: "unsupported" };
+    if (typeof witness.sourceId !== "string" || witness.sourceId === "" || typeof witness.observationId !== "string" || !/^[a-f0-9]{64}$/.test(witness.observationId) || typeof witness.token !== "string" || !/^[a-f0-9]{64}$/.test(witness.token)) return { kind: "corrupt" };
+    const limits = resolveHeadLimits(suppliedLimits);
+    if (limits === null) return { kind: "unsupported" };
+    const inspected = await inspectHead(root, witness.sourceId, limits);
+    if (inspected.kind !== "ready") return inspected;
+    if (inspected.metadata.observationId !== witness.observationId) return { kind: "changed" };
+    return headToken(inspected.metadata.rootRealpath, witness.sourceId, inspected.metadata) === witness.token
+      ? { kind: "matches", sourceId: witness.sourceId, observationId: witness.observationId }
+      : { kind: "changed" };
+  }
+  return { loadLatest, commit, readVerifiedHead, compareHeadWitness };
 }

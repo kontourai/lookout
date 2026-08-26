@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -166,5 +167,59 @@ test("second review: pointer directory-fsync failure keeps a readable valid comm
     assert.equal(result.ok, true); if (!result.ok) return; assert.match(result.warnings?.[0] ?? "", /pointer rename completed but directory fsync failed/);
     const latest = await base.loadLatest("source-a"); assert.equal(latest.ok, true); if (latest.ok) assert.equal(latest.value?.observationId, result.value.observationId);
     const files = await readdir(path.join(root, result.value.sourceKey)); assert.equal(files.includes(`${result.value.observationId}.json`), true);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("verified head reads an existing public record, remains stable across restart, and detects a later writer", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const firstStore = createObservationStore({ root });
+    const first = await firstStore.commit(input("snapshot-1"), null); assert.equal(first.ok, true); if (!first.ok) return;
+    const read = await firstStore.readVerifiedHead("source-a");
+    assert.equal(read.kind, "verified"); if (read.kind !== "verified") return;
+    assert.equal(read.observationId, first.value.observationId); assert.equal(read.snapshotRef, "snapshot-1");
+    const restarted = createObservationStore({ root });
+    const again = await restarted.readVerifiedHead("source-a");
+    assert.equal(again.kind, "verified"); if (again.kind !== "verified") return;
+    assert.equal(again.witness.token, read.witness.token, "a stable store has a stable opaque witness");
+    assert.deepEqual(await restarted.compareHeadWitness(read.witness), { kind: "matches", sourceId: "source-a", observationId: first.value.observationId });
+    const second = await restarted.commit(input("snapshot-2"), first.value.observationId); assert.equal(second.ok, true);
+    assert.deepEqual(await firstStore.compareHeadWitness(read.witness), { kind: "changed" });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("head comparison reads only bounded pointer and metadata, never the proposal record body", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const store = createObservationStore({ root }); const committed = await store.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const read = await store.readVerifiedHead("source-a"); assert.equal(read.kind, "verified"); if (read.kind !== "verified") return;
+    let recordReads = 0;
+    const compared = createObservationStore({ root, faults: { beforeHeadRecordRead: () => { recordReads += 1; } } });
+    assert.equal((await compared.compareHeadWitness(read.witness)).kind, "matches");
+    assert.equal(recordReads, 0, "comparison never opens or authenticates proposal bytes");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("head witness rejects pending, incomplete, symlinked, and over-limit metadata without writes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-")); const outside = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-outside-"));
+  try {
+    const store = createObservationStore({ root }); const committed = await store.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const read = await store.readVerifiedHead("source-a"); assert.equal(read.kind, "verified"); if (read.kind !== "verified") return;
+    const dir = path.join(root, committed.value.sourceKey); const pointer = path.join(dir, "latest.json"); const before = await readFile(pointer, "utf8");
+    await writeFile(path.join(dir, ".lock"), "pending"); assert.equal((await store.compareHeadWitness(read.witness)).kind, "unavailable"); await rm(path.join(dir, ".lock"));
+    await writeFile(path.join(dir, "orphan"), "x"); assert.equal((await store.compareHeadWitness(read.witness)).kind, "corrupt"); await rm(path.join(dir, "orphan"));
+    await rm(pointer); await symlink(path.join(outside, "pointer"), pointer); assert.equal((await store.compareHeadWitness(read.witness)).kind, "corrupt"); await rm(pointer); await writeFile(pointer, before);
+    assert.equal((await store.readVerifiedHead("source-a", { maxEntries: 1 })).kind, "unavailable");
+    assert.equal(await readFile(pointer, "utf8"), before, "all witness reads are zero-write");
+  } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
+test("head read fence rejects an ABA pointer replacement around strong record authentication", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const base = createObservationStore({ root }); const committed = await base.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const dir = path.join(root, committed.value.sourceKey); const pointer = path.join(dir, "latest.json"); const bytes = await readFile(pointer, "utf8");
+    const raced = createObservationStore({ root, faults: { beforeHeadAfterFence: () => { writeFileSync(pointer, `${bytes}\n`, "utf8"); } } });
+    assert.equal((await raced.readVerifiedHead("source-a")).kind, "unavailable");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
