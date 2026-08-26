@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/kontourai/lookout/compare/v0.4.0...v0.5.0) (2026-08-26)
+
+
+### Fixes
+
+* admit authenticated observation snapshots ([#68](https://github.com/kontourai/lookout/issues/68)) ([47e2499](https://github.com/kontourai/lookout/commit/47e24997b0a78cc8cbd33e834d185e4f660b32b6))
+
 ## [0.4.0](https://github.com/kontourai/lookout/compare/v0.3.6...v0.4.0) (2026-08-26)
 
 
