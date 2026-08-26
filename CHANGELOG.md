@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/kontourai/lookout/compare/v0.5.0...v0.5.1) (2026-08-26)
+
+
+### Features
+
+* admit exact source captures and checks ([#71](https://github.com/kontourai/lookout/issues/71)) ([9a07b9b](https://github.com/kontourai/lookout/commit/9a07b9b08bc08c207026782b18c3925358a5da5e))
+
 ## [0.5.0](https://github.com/kontourai/lookout/compare/v0.4.0...v0.5.0) (2026-08-26)
 
 
