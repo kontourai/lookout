@@ -256,6 +256,23 @@ latest two valid observations. The emitted `events` are already
 Hachure-evidence-shaped; a consumer or product lifts them into a Hachure
 `TrustBundle` with `@kontourai/surface`'s `TrustBundleBuilder` when it wants
 Surface projection — lookout itself authors nothing in the trust layer.
+
+### Verified proposal head witnesses
+
+The concrete filesystem observation store additionally exposes
+`readVerifiedHead(sourceId, limits)` and `compareHeadWitness(witness, limits)`.
+The first returns an authenticated observation id and snapshot reference with an
+opaque, versioned witness; the second reads only bounded head metadata and
+returns `matches`, `changed`, `missing`, `unavailable`, `corrupt`, or
+`unsupported`. It never reads proposal bytes during comparison.
+
+A witness is an as-of fence, not a freshness guarantee: it binds the source,
+current head, store scope, pointer, and filesystem metadata observed at capture.
+It detects ordinary older writers without requiring them to write a sidecar.
+Restarting the same store preserves a witness; copying or restoring the store
+can invalidate it. It does not prove proposal-body bit-rot or provide an atomic
+transaction across stores. Limits are finite hard caps on enumeration, pointer,
+and authenticated-record reads; callers may only narrow the defaults.
 Store paths refuse symbolic links. An existing source lock is not automatically
 broken: after confirming no writer is active, an operator may remove an
 abandoned `.lock` file and retry.

@@ -223,3 +223,19 @@ test("head read fence rejects an ABA pointer replacement around strong record au
     assert.equal((await raced.readVerifiedHead("source-a")).kind, "unavailable");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("head APIs contain malformed pointers and hostile witness access before capability reads", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const store = createObservationStore({ root }); const committed = await store.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const read = await store.readVerifiedHead("source-a"); assert.equal(read.kind, "verified"); if (read.kind !== "verified") return;
+    const pointer = path.join(root, committed.value.sourceKey, "latest.json");
+    await writeFile(pointer, "null", "utf8");
+    assert.equal((await store.compareHeadWitness(read.witness)).kind, "corrupt");
+    await writeFile(pointer, "[]", "utf8");
+    assert.equal((await store.readVerifiedHead("source-a")).kind, "corrupt");
+    const hostile = Object.create(null, { kind: { get() { throw new Error("must not inspect after I/O"); } } });
+    assert.deepEqual(await store.compareHeadWitness(hostile as never), { kind: "corrupt" });
+    assert.equal((await store.readVerifiedHead("x".repeat(257))).kind, "unsupported");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
