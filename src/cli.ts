@@ -20,7 +20,7 @@ export interface RunCliOptions {
   loadRegistry?(path?: string): Promise<SourceStore>;
   runner?: CheckRunner;
   readObservation?: (path: string) => Promise<unknown>;
-  emitDrift?(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string): Promise<DriftResult>;
+  emitDrift?(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string, snapshotRoot?: string): Promise<DriftResult>;
 }
 
 export async function runCli(options: RunCliOptions = {}): Promise<number> {
@@ -48,7 +48,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     let value: unknown;
     try { value = await (options.readObservation ?? readObservation)(parsed.observationPath); }
     catch (error) { stderr.write(`Could not read observation: ${error instanceof Error ? error.message : String(error)}\n`); return 1; }
-    const result = await (options.emitDrift ?? emitDrift)(parsed.id, value, store, parsed.observationRoot);
+    const result = await (options.emitDrift ?? emitDrift)(parsed.id, value, store, parsed.observationRoot, parsed.snapshotRoot);
     if (!result.ok) { stderr.write(`${result.error.kind}: ${result.error.message}\n`); return 1; }
     stdout.write(`${JSON.stringify(result.value)}\n`);
     return 0;
@@ -80,7 +80,7 @@ interface ParsedCheckArgs {
   registryPath?: string;
   snapshotRoot?: string;
 }
-interface ParsedEmitArgs { command: "emit-drift"; id: string; registryPath?: string; observationPath: string; observationRoot?: string }
+interface ParsedEmitArgs { command: "emit-drift"; id: string; registryPath?: string; observationPath: string; observationRoot?: string; snapshotRoot?: string }
 type ParsedArgs = ParsedCheckArgs | ParsedEmitArgs;
 
 function parseArgs(argv: string[]): ParsedArgs | string {
@@ -112,18 +112,18 @@ function parseArgs(argv: string[]): ParsedArgs | string {
 }
 
 function parseEmitArgs(argv: string[]): ParsedEmitArgs | string {
-  let id: string | undefined; let observationPath: string | undefined; let registryPath: string | undefined; let observationRoot: string | undefined;
+  let id: string | undefined; let observationPath: string | undefined; let registryPath: string | undefined; let observationRoot: string | undefined; let snapshotRoot: string | undefined;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--registry" || arg === "--observation" || arg === "--observation-root") {
+    if (arg === "--registry" || arg === "--observation" || arg === "--observation-root" || arg === "--snapshot-root") {
       const value = argv[++index]; if (!value || (value.startsWith("--") && value !== "-")) return `${arg} requires a path`;
-      if (arg === "--registry") registryPath = value; else if (arg === "--observation") observationPath = value; else observationRoot = value;
+      if (arg === "--registry") registryPath = value; else if (arg === "--observation") observationPath = value; else if (arg === "--observation-root") observationRoot = value; else snapshotRoot = value;
     } else if (arg.startsWith("--")) return `Unknown option: ${arg}`;
     else if (id) return "Only one source id may be emitted at a time"; else id = arg;
   }
   if (!id) return "emit-drift requires a source id";
   if (!observationPath) return "emit-drift requires --observation <path|->";
-  return { command: "emit-drift", id, observationPath, registryPath, observationRoot };
+  return { command: "emit-drift", id, observationPath, registryPath, observationRoot, snapshotRoot };
 }
 
 async function readObservation(file: string): Promise<unknown> {
@@ -152,9 +152,9 @@ function cliEntities(observation: ProposalSetObservation): readonly CliEntity[] 
   }
   return [...grouped].map(([key, proposals]) => ({ key, proposals }));
 }
-async function emitDrift(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string): Promise<DriftResult> {
+async function emitDrift(sourceId: string, value: unknown, store: SourceStore, observationRoot?: string, snapshotRoot?: string): Promise<DriftResult> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: { kind: "invalid-input", message: "Observation document must be an object" } };
   const document = value as { observation?: ProposalSetObservation; check?: import("./observation-store.js").ObservationCheckAnchor };
   const source = (await store.get(sourceId))!;
-  return createDriftEmitter<CliEntity>({ store: createObservationStore({ root: observationRoot }) }).emit({ source, current: document.observation as ProposalSetObservation, check: document.check as import("./observation-store.js").ObservationCheckAnchor, callbacks: { selectEntities: cliEntities, entityIdentity: (entity) => entity.key, proposalsFor: (entity) => entity.proposals, fieldIdentity: (_entity, proposal) => proposal.fieldPath } });
+  return createDriftEmitter<CliEntity>({ store: createObservationStore({ root: observationRoot }), snapshotStore: createLookoutSnapshotStore(snapshotRoot) }).emit({ source, current: document.observation as ProposalSetObservation, check: document.check as import("./observation-store.js").ObservationCheckAnchor, callbacks: { selectEntities: cliEntities, entityIdentity: (entity) => entity.key, proposalsFor: (entity) => entity.proposals, fieldIdentity: (_entity, proposal) => proposal.fieldPath } });
 }

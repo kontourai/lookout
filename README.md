@@ -228,7 +228,7 @@ item, or hard failure — is the consumer's call.
 ```
 lookout check <id> [--registry <path>] [--snapshot-root <path>]
 lookout check --all [--registry <path>] [--snapshot-root <path>]
-lookout emit-drift <id> --observation <path|-> [--registry <path>] [--observation-root <path>]
+lookout emit-drift <id> --observation <path|-> [--registry <path>] [--observation-root <path>] [--snapshot-root <path>]
 ```
 
 - Emits **exactly one compact JSON object per checked source, per stdout line**
@@ -259,6 +259,12 @@ Surface projection — lookout itself authors nothing in the trust layer.
 Store paths refuse symbolic links. An existing source lock is not automatically
 broken: after confirming no writer is active, an operator may remove an
 abandoned `.lock` file and retry.
+
+Before an observation can be diffed or committed, `emit-drift` resolves its
+current and selected-prior Forage snapshot references against the configured
+snapshot store. This is an explicit capability (`--snapshot-root` defaults to
+`.kontourai/lookout/snapshots`); missing, corrupt, malformed, or insufficiently
+bound captures produce no facts and no continuity commit.
 
 ## Library
 

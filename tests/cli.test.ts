@@ -4,6 +4,10 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { buildSnapshotSourceRef } from "@kontourai/forage/fetch";
+import { createLookoutSnapshotStore } from "../src/snapshot-store.js";
+import type { Snapshot } from "@kontourai/forage";
 import type { CheckResult } from "../src/check-result.js";
 import type { CheckRunner } from "../src/check-runner.js";
 import { runCli } from "../src/cli.js";
@@ -167,11 +171,18 @@ function runnerFor(results: CheckResult[]): CheckRunner {
   };
 }
 
-function observationDocument(snapshotRef: string, value: string) {
-  return { observation: { sourceId: "alpha", snapshotRef, observedAt: `${snapshotRef}-time`, proposals: [{ fieldPath: "entries[].value", pathIndices: [0], candidateValue: value, confidence: 0.9, provenance: { locator: "chars:0-3", excerpt: value }, extractor: "example-extractor:v1" }] }, check: { checkedAt: `${snapshotRef}-checked`, resultKind: "changed", currentSnapshotRef: snapshotRef } };
+const cliSnapshots: Snapshot[] = [];
+function observationDocument(label: string, value: string) {
+  const body = `cli:${label}`;
+  const snapshot: Snapshot = { sourceId: "alpha", url: "https://example.test/alpha", status: 200, fetchedAt: `2026-07-10T12:01:${String(cliSnapshots.length).padStart(2, "0")}.000Z`, body, bodyHash: createHash("sha256").update(body).digest("hex") };
+  cliSnapshots.push(snapshot);
+  const snapshotRef = buildSnapshotSourceRef(snapshot);
+  return { observation: { sourceId: "alpha", snapshotRef, observedAt: `${label}-time`, proposals: [{ fieldPath: "entries[].value", pathIndices: [0], candidateValue: value, confidence: 0.9, provenance: { locator: "chars:0-3", excerpt: value }, extractor: "example-extractor:v1" }] }, check: { checkedAt: `${label}-checked`, resultKind: "changed", currentSnapshotRef: snapshotRef } };
 }
 
 async function runLookout(cwd: string, argv: string[], stdin?: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  const snapshots = createLookoutSnapshotStore(path.join(cwd, ".kontourai", "lookout", "snapshots"));
+  await Promise.all(cliSnapshots.map((snapshot) => snapshots.put(snapshot)));
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(process.cwd(), "bin", "lookout.mjs"), ...argv], { cwd, stdio: "pipe" }); let stdout = ""; let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; }); child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; }); child.on("error", reject); child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr })); child.stdin.end(stdin);
