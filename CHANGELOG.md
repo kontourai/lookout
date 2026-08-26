@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/kontourai/lookout/compare/v0.5.1...v0.5.2) (2026-08-26)
+
+
+### Features
+
+* expose verified proposal-head witnesses and bounded comparisons ([#74](https://github.com/kontourai/lookout/issues/74)) ([5fc0c38](https://github.com/kontourai/lookout/commit/5fc0c38221dffaf91130123dbb2f5871da3c590e))
+
 ## [0.5.1](https://github.com/kontourai/lookout/compare/v0.5.0...v0.5.1) (2026-08-26)
 
 
