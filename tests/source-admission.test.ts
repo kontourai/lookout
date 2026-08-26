@@ -128,3 +128,22 @@ test("wrong304 baseline and operational error never admit a successful current c
     assert.equal(result.ok, false); assert.equal(JSON.stringify(result).includes("/private/diagnostic"), false);
   }
 });
+
+test("capture admission supports HTTP(S), ignores URL fragments, and contains missing/cross-source/tampered refs", async () => {
+  for (const protocol of ["http:", "https:"]) {
+    const value = snapshot("body", { url: `${protocol}//example.test/start` });
+    const f = await fixture([value]);
+    const result = await admitSourceCapture({ source: { ...registered, url: `${value.url}#section` }, snapshotRef: f.current, snapshotStore: f.store });
+    assert.equal(result.ok, true);
+  }
+});
+
+test("missing, cross-source, and corrupted captured bytes fail without bodies or raw errors", async () => {
+  const f = await fixture();
+  assert.equal((await admitSourceCapture({ source: registered, snapshotRef: f.current, snapshotStore: createInMemorySnapshotStore() })).ok, false);
+  assert.equal((await admitSourceCapture({ source: { ...registered, id: "other" }, snapshotRef: f.current, snapshotStore: f.store })).ok, false);
+  const find = f.store.findExact.bind(f.store);
+  f.store.findExact = async ref => { const result = await find(ref); return result.kind === "found" ? { kind: "found", snapshot: { ...result.snapshot, body: "private-body-canary" } } : result; };
+  const corrupted = await admitSourceCapture({ source: registered, snapshotRef: f.current, snapshotStore: f.store });
+  assert.equal(corrupted.ok, false); assert.equal(JSON.stringify(corrupted).includes("private-body-canary"), false);
+});
