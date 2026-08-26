@@ -86,7 +86,7 @@ export interface CreateObservationStoreOptions { readonly root?: string; readonl
 const VERIFIED_HEAD_MAX: Readonly<{ maxEntries: number; maxIndexBytes: number; maxPointerBytes: number; maxRecordBytes: number }> = Object.freeze({ maxEntries: 8, maxIndexBytes: 8 * 1024, maxPointerBytes: 8 * 1024, maxRecordBytes: 1024 * 1024 });
 type ResolvedHeadLimits = typeof VERIFIED_HEAD_MAX;
 type FileIdentity = Readonly<{ dev: string; ino: string; mode: string; size: string; ctimeNs: string; mtimeNs: string }>;
-type HeadMetadata = Readonly<{ root: FileIdentity; rootRealpath: string; source: FileIdentity; names: readonly string[]; pointer: string; observationId: string; record: FileIdentity }>;
+type HeadMetadata = Readonly<{ root: FileIdentity; rootRealpath: string; source: FileIdentity; names: readonly string[]; pointer: string; pointerIdentity: FileIdentity; observationId: string; record: FileIdentity }>;
 type HeadInspection = { readonly kind: "ready"; readonly metadata: HeadMetadata } | { readonly kind: "missing" | "unavailable" | "corrupt" | "unsupported" };
 
 function sourceKey(sourceId: string): string {
@@ -123,7 +123,11 @@ function headToken(rootRealpath: string, sourceId: string, metadata: HeadMetadat
 }
 function errno(cause: unknown): string | undefined { return (cause as NodeJS.ErrnoException | undefined)?.code; }
 
-async function boundedText(file: string, maximum: number): Promise<{ readonly kind: "ok"; readonly text: string } | { readonly kind: "unavailable" | "corrupt" }> {
+function boundedSourceId(sourceId: unknown): sourceId is string {
+  return typeof sourceId === "string" && sourceId.length > 0 && sourceId.length <= 256 && Buffer.byteLength(sourceId) <= 512;
+}
+
+async function boundedText(file: string, maximum: number): Promise<{ readonly kind: "ok"; readonly text: string; readonly identity: FileIdentity } | { readonly kind: "unavailable" | "corrupt" }> {
   let handle;
   try {
     const before = await lstatHead(file);
@@ -135,12 +139,13 @@ async function boundedText(file: string, maximum: number): Promise<{ readonly ki
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     const after = await handle.stat({ bigint: true });
     if (!sameIdentity(identity(opened), identity(after)) || bytesRead !== Number(opened.size) || bytesRead > maximum) return { kind: "unavailable" };
-    return { kind: "ok", text: buffer.subarray(0, bytesRead).toString("utf8") };
+    return { kind: "ok", text: buffer.subarray(0, bytesRead).toString("utf8"), identity: identity(after) };
   } catch (cause) { return errno(cause) === "ENOENT" ? { kind: "unavailable" } : { kind: "unavailable" }; }
   finally { await handle?.close().catch(() => undefined); }
 }
 
 async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadLimits): Promise<HeadInspection> {
+  if (!boundedSourceId(sourceId)) return { kind: "unsupported" };
   let key: string;
   try { key = sourceKey(sourceId); } catch { return { kind: "unsupported" }; }
   let rootStats;
@@ -175,13 +180,26 @@ async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadL
   if (pointerRead.kind !== "ok") return pointerRead;
   let pointer: { version?: unknown; sourceId?: unknown; observationId?: unknown };
   try { pointer = JSON.parse(pointerRead.text) as typeof pointer; } catch { return { kind: "corrupt" }; }
-  if (pointer.version !== 1 || pointer.sourceId !== sourceId || typeof pointer.observationId !== "string" || !/^[a-f0-9]{64}$/.test(pointer.observationId)) return { kind: "corrupt" };
+  if (!pointer || typeof pointer !== "object" || Array.isArray(pointer) || pointer.version !== 1 || pointer.sourceId !== sourceId || typeof pointer.observationId !== "string" || !/^[a-f0-9]{64}$/.test(pointer.observationId)) return { kind: "corrupt" };
   const recordName = `${pointer.observationId}.json`;
   if (!names.includes(recordName)) return { kind: "corrupt" };
   let recordStats;
   try { recordStats = await lstatHead(path.join(dir, recordName)); } catch { return { kind: "unavailable" }; }
   if (recordStats.isSymbolicLink() || !recordStats.isFile() || recordStats.size > BigInt(limits.maxRecordBytes)) return { kind: "corrupt" };
-  return { kind: "ready", metadata: { root: identity(rootStats), rootRealpath, source: identity(sourceStats), names, pointer: pointerRead.text, observationId: pointer.observationId, record: identity(recordStats) } };
+  let finalRoot; let finalSource;
+  try { finalRoot = await lstatHead(root); finalSource = await lstatHead(dir); } catch { return { kind: "unavailable" }; }
+  if (!sameIdentity(identity(rootStats), identity(finalRoot)) || !sameIdentity(identity(sourceStats), identity(finalSource))) return { kind: "unavailable" };
+  return { kind: "ready", metadata: { root: identity(rootStats), rootRealpath, source: identity(sourceStats), names, pointer: pointerRead.text, pointerIdentity: pointerRead.identity, observationId: pointer.observationId, record: identity(recordStats) } };
+}
+
+function snapshotWitness(value: unknown): ProposalHeadWitnessV1 | null {
+  try {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const witness = value as Record<string, unknown>;
+    if (Object.keys(witness).length !== 5 || Object.keys(witness).some((key) => !["kind", "version", "sourceId", "observationId", "token"].includes(key))) return null;
+    if (witness.kind !== "lookout.proposal-head-witness/v1" || witness.version !== 1 || !boundedSourceId(witness.sourceId) || typeof witness.observationId !== "string" || !/^[a-f0-9]{64}$/.test(witness.observationId) || typeof witness.token !== "string" || !/^[a-f0-9]{64}$/.test(witness.token)) return null;
+    return { kind: witness.kind, version: witness.version, sourceId: witness.sourceId, observationId: witness.observationId, token: witness.token };
+  } catch { return null; }
 }
 
 function buildRecord(input: ProposalObservationRecordInput): ObservationStoreResult<StoredProposalObservationV1> {
@@ -327,15 +345,15 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
   }
 
   async function compareHeadWitness(witness: ProposalHeadWitnessV1, suppliedLimits?: VerifiedHeadLimits): Promise<HeadWitnessComparison> {
-    if (!witness || typeof witness !== "object" || witness.kind !== "lookout.proposal-head-witness/v1" || witness.version !== 1) return { kind: "unsupported" };
-    if (typeof witness.sourceId !== "string" || witness.sourceId === "" || typeof witness.observationId !== "string" || !/^[a-f0-9]{64}$/.test(witness.observationId) || typeof witness.token !== "string" || !/^[a-f0-9]{64}$/.test(witness.token)) return { kind: "corrupt" };
+    const captured = snapshotWitness(witness);
+    if (captured === null) return { kind: "corrupt" };
     const limits = resolveHeadLimits(suppliedLimits);
     if (limits === null) return { kind: "unsupported" };
-    const inspected = await inspectHead(root, witness.sourceId, limits);
+    const inspected = await inspectHead(root, captured.sourceId, limits);
     if (inspected.kind !== "ready") return inspected;
-    if (inspected.metadata.observationId !== witness.observationId) return { kind: "changed" };
-    return headToken(inspected.metadata.rootRealpath, witness.sourceId, inspected.metadata) === witness.token
-      ? { kind: "matches", sourceId: witness.sourceId, observationId: witness.observationId }
+    if (inspected.metadata.observationId !== captured.observationId) return { kind: "changed" };
+    return headToken(inspected.metadata.rootRealpath, captured.sourceId, inspected.metadata) === captured.token
+      ? { kind: "matches", sourceId: captured.sourceId, observationId: captured.observationId }
       : { kind: "changed" };
   }
   return { loadLatest, commit, readVerifiedHead, compareHeadWitness };
