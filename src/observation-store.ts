@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, unlink } from "node:fs/promises";
 import path from "node:path";
+import { types } from "node:util";
 import type { ExtractionProposal } from "@kontourai/traverse";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 
@@ -201,7 +202,7 @@ async function inspectHead(root: string, sourceId: string, limits: ResolvedHeadL
 
 function snapshotWitness(value: unknown): { readonly kind: "ok"; readonly witness: ProposalHeadWitnessV1 } | { readonly kind: "corrupt" | "unsupported" } {
   try {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "corrupt" };
+    if (!value || typeof value !== "object" || Array.isArray(value) || types.isProxy(value)) return { kind: "corrupt" };
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const keys = ["kind", "version", "sourceId", "observationId", "token"];
     if (Object.keys(descriptors).length !== keys.length || keys.some((key) => !Object.hasOwn(descriptors, key) || descriptors[key]?.get || descriptors[key]?.set)) return { kind: "corrupt" };
