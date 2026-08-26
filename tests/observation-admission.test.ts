@@ -79,6 +79,57 @@ test("emitter commits the invocation image when caller mutates current ref, anch
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("public admission retains the current source, URL, ref, and anchor captured before deferred resolution", async () => {
+  const body = "current-capture";
+  const snapshot: Snapshot = { sourceId: "source-a", url: "https://example.test/start", status: 200, fetchedAt: "2026-08-26T00:00:00.000Z", body, bodyHash: createHash("sha256").update(body).digest("hex") };
+  const reference = buildSnapshotSourceRef(snapshot); let started!: () => void; let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const snapshots: ExactSnapshotStore = { async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; }, async findExact() { started(); await waiting; return { kind: "found", snapshot }; } };
+  const document = { ...input(reference), prior: null, snapshotStore: snapshots };
+  const begun = new Promise<void>((resolve) => { started = resolve; });
+  const pending = admitProposalObservation(document);
+  await begun;
+  const bad = "forage-snapshot:deadbeef?url=https%3A%2F%2Fexample.test%2Fchanged&sha256=deadbeef&fetchedAt=now";
+  (document.source as { id: string; url: string }).id = "deadbeef";
+  (document.source as { url: string }).url = "https://example.test/changed";
+  (document.current as { sourceId: string; snapshotRef: string }).sourceId = "deadbeef";
+  (document.current as { snapshotRef: string }).snapshotRef = bad;
+  (document.check as { currentSnapshotRef: string }).currentSnapshotRef = bad;
+  release(); const admitted = await pending;
+  assert.equal(admitted.ok, true); if (!admitted.ok) return;
+  assert.equal(admitted.value.current.sourceId, "source-a");
+  assert.equal(admitted.value.current.url, "https://example.test/start");
+  assert.equal(admitted.value.current.snapshotRef, reference);
+});
+
+test("public admission retains the prior source, URL, ref, and anchor captured before deferred resolution", async () => {
+  const makeSnapshot = (body: string, fetchedAt: string): Snapshot => ({ sourceId: "source-a", url: "https://example.test/start", status: 200, fetchedAt, body, bodyHash: createHash("sha256").update(body).digest("hex") });
+  const currentSnapshot = makeSnapshot("current-capture", "2026-08-26T00:00:00.000Z"); const priorSnapshot = makeSnapshot("prior-capture", "2026-08-25T00:00:00.000Z");
+  const currentRef = buildSnapshotSourceRef(currentSnapshot); const priorRef = buildSnapshotSourceRef(priorSnapshot); let calls = 0; let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const snapshots: ExactSnapshotStore = { async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; }, async findExact(reference) { calls++; if (calls === 2) await waiting; return { kind: "found", snapshot: reference.bodyHash === priorSnapshot.bodyHash ? priorSnapshot : currentSnapshot }; } };
+  const document = { ...input(currentRef), prior: { sourceId: "source-a", snapshotRef: priorRef, check: { currentSnapshotRef: priorRef } } as never, snapshotStore: snapshots };
+  const pending = admitProposalObservation(document);
+  while (calls < 2) await new Promise((resolve) => setImmediate(resolve));
+  const bad = "forage-snapshot:deadbeef?url=https%3A%2F%2Fexample.test%2Fchanged&sha256=deadbeef&fetchedAt=now";
+  (document.source as { id: string; url: string }).id = "deadbeef";
+  (document.source as { url: string }).url = "https://example.test/changed";
+  (document.current as { sourceId: string; snapshotRef: string }).sourceId = "deadbeef";
+  (document.current as { snapshotRef: string }).snapshotRef = bad;
+  (document.check as { currentSnapshotRef: string }).currentSnapshotRef = bad;
+  (document.prior as { sourceId: string; snapshotRef: string; check: { currentSnapshotRef: string } }).sourceId = "deadbeef";
+  (document.prior as { snapshotRef: string }).snapshotRef = bad;
+  (document.prior as { check: { currentSnapshotRef: string } }).check.currentSnapshotRef = bad;
+  release(); const admitted = await pending;
+  assert.equal(admitted.ok, true); if (!admitted.ok) return;
+  assert.equal(admitted.value.current.sourceId, "source-a");
+  assert.equal(admitted.value.current.url, "https://example.test/start");
+  assert.equal(admitted.value.current.snapshotRef, currentRef);
+  assert.equal(admitted.value.prior?.sourceId, "source-a");
+  assert.equal(admitted.value.prior?.url, "https://example.test/start");
+  assert.equal(admitted.value.prior?.snapshotRef, priorRef);
+});
+
 test("admission contains undefined and malformed prior state without capability I/O", async () => {
   let reads = 0; const snapshots: ExactSnapshotStore = { async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; }, async findExact() { reads++; return { kind: "missing" }; } };
   const undefinedResult = await admitProposalObservation(undefined as never); assert.equal(undefinedResult.ok, false);

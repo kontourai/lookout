@@ -143,7 +143,7 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
 
         const committed = await options.store.commit({ observation: invocation.current, recordedAt, check: invocation.check }, prior?.observationId ?? null);
         if (!committed.ok) return { ok: false, error: { kind: "persistence-error", message: committed.error.message, cause: committed.error } };
-        return { ok: true, value: { sourceId: input.source.id, events, facts, priorObservationId, committedObservation: committed.value, warnings: committed.warnings ?? [] } };
+        return { ok: true, value: { sourceId: invocation.source.id, events, facts, priorObservationId, committedObservation: committed.value, warnings: committed.warnings ?? [] } };
       } catch (cause) {
         return { ok: false, error: { kind: "unexpected", message: "Drift emission failed", cause } };
       }
