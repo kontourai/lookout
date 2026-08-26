@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { parseSnapshotSourceRef } from "@kontourai/forage/fetch";
 import type { FetchResult, SnapshotStore } from "@kontourai/forage/fetch";
 import { createCheckRunner } from "../src/check-runner.js";
 import type { StructuredFileLookoutSource } from "../src/registry.js";
+import { createLookoutSnapshotStore } from "../src/snapshot-store.js";
 import { memoryStore, snapshot, source } from "./helpers.js";
 
 test("AC1 --all returns one ordered result per registered source and stores both fresh snapshots", async () => {
@@ -188,6 +192,66 @@ test("store read rejection becomes a lookout error and check never rejects", asy
   if (result.kind !== "error") return;
   assert.equal(result.origin, "lookout");
   assert.equal(result.error.kind, "prior-read");
+});
+
+test("a corrupted filesystem baseline stops before fetch, persistence, or re-baselining", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-prior-integrity-"));
+  const physicalStore = createLookoutSnapshotStore(root);
+  let putCalls = 0;
+  let fetchCalls = 0;
+  const store: SnapshotStore = {
+    async put(value) { putCalls += 1; await physicalStore.put(value); },
+    latest: physicalStore.latest.bind(physicalStore),
+    get: physicalStore.get.bind(physicalStore),
+    list: physicalStore.list.bind(physicalStore),
+  };
+  const registered = source("integrity");
+
+  try {
+    const baseline = await createCheckRunner({
+      store,
+      fetchSource: async () => ({ snapshot: snapshot("integrity", "baseline") }),
+    }).check(registered);
+    assert.equal(baseline.kind, "changed");
+    if (baseline.kind === "changed") {
+      assert.equal(baseline.changeBasis, "initial");
+      assert.equal(baseline.priorSnapshotRef, null);
+      assert.deepEqual(baseline.warnings, []);
+    }
+    assert.equal(putCalls, 1);
+
+    const [sourceDirectory] = await readdir(root);
+    assert.ok(sourceDirectory);
+    const records = await readdir(path.join(root, sourceDirectory));
+    const record = records.find((name) => name.endsWith(".json"));
+    assert.ok(record);
+    const recordPath = path.join(root, sourceDirectory, record);
+    const persisted = JSON.parse(await readFile(recordPath, "utf8")) as Record<string, unknown>;
+    await writeFile(recordPath, JSON.stringify({
+      ...persisted,
+      body: "tampered body",
+      bodyHash: "0".repeat(64),
+      status: 299,
+      url: "https://example.test/tampered",
+    }));
+
+    const result = await createCheckRunner({
+      store,
+      fetchSource: async () => {
+        fetchCalls += 1;
+        return { snapshot: snapshot("integrity", "would-be-new-baseline") };
+      },
+    }).check(registered);
+
+    assert.equal(result.kind, "error");
+    if (result.kind !== "error") return;
+    assert.equal(result.origin, "lookout");
+    assert.equal(result.error.kind, "prior-read");
+    assert.equal(fetchCalls, 0);
+    assert.equal(putCalls, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("store write rejection emits no successful classification and check never rejects", async () => {
