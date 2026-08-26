@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -238,4 +238,33 @@ test("head APIs contain malformed pointers and hostile witness access before cap
     assert.deepEqual(await store.compareHeadWitness(hostile as never), { kind: "corrupt" });
     assert.equal((await store.readVerifiedHead("x".repeat(257))).kind, "unsupported");
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("head witness snapshots own data before I/O and rejects accessor and proxy inputs", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-"));
+  try {
+    const store = createObservationStore({ root }); const committed = await store.commit(input("snapshot-1"), null); assert.equal(committed.ok, true); if (!committed.ok) return;
+    const read = await store.readVerifiedHead("source-a"); assert.equal(read.kind, "verified"); if (read.kind !== "verified") return;
+    let accesses = 0;
+    const mutable = Object.create(null, { ...Object.getOwnPropertyDescriptors(read.witness), sourceId: { get() { accesses += 1; return "source-b"; }, enumerable: true } });
+    assert.deepEqual(await store.compareHeadWitness(mutable as never), { kind: "corrupt" }); assert.equal(accesses, 0);
+    assert.deepEqual(await store.compareHeadWitness(new Proxy(read.witness, {})), { kind: "corrupt" });
+    const limits = Object.create(null, { maxEntries: { get() { throw new Error("limit getter"); }, enumerable: true } });
+    assert.deepEqual(await store.readVerifiedHead("source-a", limits), { kind: "unsupported" });
+    assert.deepEqual(await store.compareHeadWitness(read.witness, new Proxy({}, {})), { kind: "unsupported" });
+    assert.deepEqual(await store.compareHeadWitness({ ...read.witness, version: 2 } as never), { kind: "unsupported" });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("concrete relative roots bind at construction and comparison never opens an unreadable proposal body", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "lookout-head-witness-cwd-")); const original = process.cwd();
+  try {
+    const a = path.join(base, "a"); const b = path.join(base, "b"); await mkdir(a); await mkdir(b); process.chdir(a);
+    const relative = createObservationStore({ root: "store" }); const one = await relative.commit(input("snapshot-a"), null); assert.equal(one.ok, true); if (!one.ok) return;
+    process.chdir(b); const other = createObservationStore({ root: path.join(b, "store") }); assert.equal((await other.commit(input("snapshot-b"), null)).ok, true);
+    const head = await relative.readVerifiedHead("source-a"); assert.equal(head.kind, "verified"); if (head.kind !== "verified") return; assert.equal(head.snapshotRef, "snapshot-a");
+    const record = path.join(a, "store", one.value.sourceKey, `${one.value.observationId}.json`); await chmod(record, 0o000);
+    assert.equal((await relative.compareHeadWitness(head.witness)).kind, "changed", "comparison reaches metadata but never opens unreadable proposal bytes");
+    await chmod(record, 0o600);
+  } finally { process.chdir(original); await rm(base, { recursive: true, force: true }); }
 });

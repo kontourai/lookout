@@ -104,7 +104,7 @@ function canonical(value: unknown): string { return `${JSON.stringify(stable(val
 function digest(body: Omit<StoredProposalObservationV1, "observationId">): string { return createHash("sha256").update(canonical(body)).digest("hex"); }
 
 function resolveHeadLimits(limits: VerifiedHeadLimits | undefined): ResolvedHeadLimits | null {
-  if (limits !== undefined && (!limits || typeof limits !== "object" || Array.isArray(limits))) return null;
+  if (limits !== undefined && (!limits || typeof limits !== "object" || Array.isArray(limits) || types.isProxy(limits))) return null;
   let supplied: Record<string, unknown>;
   try {
     const descriptors = limits === undefined ? {} : Object.getOwnPropertyDescriptors(limits);
