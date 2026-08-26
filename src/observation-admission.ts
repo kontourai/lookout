@@ -29,6 +29,39 @@ export interface ObservationAdmissionError {
 }
 export type ObservationAdmissionResult = { readonly ok: true; readonly value: AdmittedProposalObservation } | { readonly ok: false; readonly error: ObservationAdmissionError };
 
+/** A stable exact-reader capability, captured before asynchronous admission begins. */
+export function captureExactSnapshotReader(store: SnapshotStore): SnapshotStore | null {
+  try {
+    if (!store || typeof store !== "object" || typeof store.findExact !== "function") return null;
+    const findExact = store.findExact.bind(store);
+    return { findExact } as SnapshotStore;
+  } catch {
+    return null;
+  }
+}
+
+export type SnapshotSourceBinding = "url-binding" | "redirect-binding";
+
+/**
+ * Bind an authenticated snapshot to a registry source without exposing its
+ * body. Historical direct captures can predate a registry URL change, but a
+ * legacy reference cannot authenticate any redirect capture.
+ */
+export function snapshotSourceBinding(
+  registeredUrl: string,
+  finalUrl: string,
+  redirects: readonly string[] | undefined,
+  integrity: "snapshot-envelope" | "body-and-identity",
+  current: boolean,
+): SnapshotSourceBinding | null {
+  const registered = normalizedHttpUrl(registeredUrl);
+  const final = normalizedHttpUrl(finalUrl);
+  if (registered === null || final === null) return "url-binding";
+  if (!redirects?.length) return !current || final === registered ? null : "url-binding";
+  if (integrity !== "snapshot-envelope" || !validRedirectChain(redirects, finalUrl)) return "redirect-binding";
+  return !current || normalizedHttpUrl(redirects[0]!) === registered ? null : "redirect-binding";
+}
+
 export interface AdmitProposalObservationInput {
   readonly source: LookoutSource;
   readonly current: ProposalSetObservation;
@@ -106,11 +139,12 @@ function captureInvocation(input: AdmitProposalObservationInput): AdmitProposalO
   try {
     if (!input || typeof input !== "object") return null;
     const image = structuredClone({ source: input.source, current: input.current, check: input.check, prior: input.prior });
-    return { ...image, snapshotStore: input.snapshotStore };
+    const snapshotStore = captureExactSnapshotReader(input.snapshotStore);
+    return snapshotStore === null ? null : { ...image, snapshotStore };
   } catch { return null; }
 }
 
-function normalizedHttpUrl(value: string): string | null {
+export function normalizedHttpUrl(value: string): string | null {
   try {
     const url = new URL(value);
     if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
@@ -120,16 +154,14 @@ function normalizedHttpUrl(value: string): string | null {
 }
 
 function bindCurrentSnapshot(finalUrl: string, redirects: readonly string[] | undefined, integrity: "snapshot-envelope" | "body-and-identity", registeredUrl: string): ObservationAdmissionResult | null {
-  const normalizedFinal = normalizedHttpUrl(finalUrl);
-  if (normalizedFinal === null) return failure("insufficient-binding", "url-binding", "Snapshot URL is not an admissible HTTP URL");
-  if (!redirects?.length) return normalizedFinal === registeredUrl ? null : failure("insufficient-binding", "url-binding", "Snapshot URL is not bound to the registered source");
-  if (integrity !== "snapshot-envelope") return failure("insufficient-binding", "redirect-binding", "Legacy snapshot references cannot authenticate redirect captures");
-  if (normalizedHttpUrl(redirects[0]!) !== registeredUrl || !validRedirectChain(redirects, finalUrl)) return failure("insufficient-binding", "redirect-binding", "Snapshot redirect capture is not admissibly bound");
+  const binding = snapshotSourceBinding(registeredUrl, finalUrl, redirects, integrity, true);
+  if (binding === "url-binding") return failure("insufficient-binding", "url-binding", "Snapshot URL is not bound to the registered source");
+  if (binding === "redirect-binding") return failure("insufficient-binding", "redirect-binding", "Snapshot redirect capture is not admissibly bound");
   return null;
 }
 
 /** Forage records visited redirect URLs before the final URL. */
-function validRedirectChain(redirects: readonly string[], finalUrl: string): boolean {
+export function validRedirectChain(redirects: readonly string[], finalUrl: string): boolean {
   const urls = [...redirects, finalUrl].map(normalizedHttpUrl);
   if (urls.some((url) => url === null)) return false;
   const concrete = urls as string[];
