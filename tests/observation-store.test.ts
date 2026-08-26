@@ -252,6 +252,9 @@ test("head witness snapshots own data before I/O and rejects accessor and proxy 
     const limits = Object.create(null, { maxEntries: { get() { throw new Error("limit getter"); }, enumerable: true } });
     assert.deepEqual(await store.readVerifiedHead("source-a", limits), { kind: "unsupported" });
     assert.deepEqual(await store.compareHeadWitness(read.witness, new Proxy({}, {})), { kind: "unsupported" });
+    const revoked = Proxy.revocable({}, {}); revoked.revoke();
+    assert.deepEqual(await store.readVerifiedHead("source-a", revoked.proxy), { kind: "unsupported" });
+    assert.deepEqual(await store.compareHeadWitness(read.witness, revoked.proxy), { kind: "unsupported" });
     assert.deepEqual(await store.compareHeadWitness({ ...read.witness, version: 2 } as never), { kind: "unsupported" });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
