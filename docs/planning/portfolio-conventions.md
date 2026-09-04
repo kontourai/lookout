@@ -99,9 +99,10 @@ jobs:
       matrix: { node-version: ['22', '24'] }
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4   # reads the pnpm pin from package.json packageManager
       - uses: actions/setup-node@v6
-        with: { node-version: '${{ matrix.node-version }}', cache: npm }
-      - run: npm ci
+        with: { node-version: '${{ matrix.node-version }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
       - run: npm run verify
 ```
 

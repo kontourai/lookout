@@ -442,9 +442,11 @@ behavior.
 ## Development
 
 ```sh
-npm ci
+pnpm install
 npm run verify   # content-boundary + decisions + typecheck + test + pack sanity
 ```
+
+The pnpm version is pinned in `package.json` (`packageManager`). Dependency install scripts are blocked by default; the only packages allowed to run one are listed under `allowBuilds` in `pnpm-workspace.yaml`, pinned by version. Scripts are still run with `npm run …` — that only invokes `package.json` scripts and does not depend on which tool installed `node_modules`.
 
 Individual gates: `npm test`, `npm run typecheck`, `npm run check:pack`,
 `npm run check:decisions`, `npm run check:content-boundary`.
