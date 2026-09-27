@@ -107,6 +107,14 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
         return { ...base, kind: "unchanged-304", snapshotRef: buildSnapshotSourceRef(prior) };
       }
 
+      // A byte-identical repeat of the stored capture is not appended: its only
+      // new information is the check time, which the result carries. Both
+      // refs then name the stored capture, which stays replayable.
+      if (prior !== undefined && isRepeatCapture(prior, snapshot)) {
+        const priorSnapshotRef = buildSnapshotSourceRef(prior);
+        return { ...base, kind: "unchanged-hash", priorSnapshotRef, currentSnapshotRef: priorSnapshotRef };
+      }
+
       try {
         await options.store.put(snapshot);
       } catch (error) {
@@ -145,6 +153,24 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
   }
 
   return { check, checkAll };
+}
+
+// Response headers other than the validators a later conditional request
+// reuses (e.g. Date) are not compared: they differ on nearly every response.
+const REVALIDATION_HEADERS = ["etag", "last-modified"] as const;
+
+/** Same resource, same body, and nothing a later check reads differs. */
+function isRepeatCapture(prior: Snapshot, current: Snapshot): boolean {
+  const priorEncoding = bodyEncoding(prior);
+  return priorEncoding !== undefined &&
+    priorEncoding === bodyEncoding(current) &&
+    prior.sourceId === current.sourceId &&
+    prior.url === current.url &&
+    prior.status === current.status &&
+    prior.bodyHash === current.bodyHash &&
+    prior.rendered === current.rendered &&
+    isDeepStrictEqual(prior.redirects, current.redirects) &&
+    REVALIDATION_HEADERS.every((name) => prior.headers?.[name] === current.headers?.[name]);
 }
 
 function bodyEncoding(snapshot: Snapshot): "utf8" | "bytes" | undefined {

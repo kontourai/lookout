@@ -6,7 +6,7 @@ import type {
   PreparedArtifact,
 } from "@kontourai/traverse";
 import { createPreparedArtifact } from "@kontourai/traverse";
-import { createObserveExtractDiff, type ObserveExtractObservation, type ObserveExtractRecorder } from "../src/index.js";
+import { createObserveExtractDiff, extractedSnapshotRef, type ObserveExtractObservation, type ObserveExtractRecorder } from "../src/index.js";
 import { source } from "./helpers.js";
 
 const artifactFor = (snapshotRef: string): PreparedArtifact => createPreparedArtifact("hello world", {
@@ -35,7 +35,8 @@ function extraction(overrides: Partial<ExtractionResult> = {}, snapshotRef = "sn
   };
 }
 
-function recorder(): ObserveExtractRecorder & { records: ObserveExtractObservation[] } {
+/** `extractedBefore` stands in for observations recorded before this test's first one. */
+function recorder(extractedBefore: string | null = null): ObserveExtractRecorder & { records: ObserveExtractObservation[] } {
   const records: ObserveExtractObservation[] = [];
   return {
     records,
@@ -43,11 +44,18 @@ function recorder(): ObserveExtractRecorder & { records: ObserveExtractObservati
       records.push(observation);
       return { observationId: `observation-${records.length}`, priorObservationId: records.length === 1 ? null : `observation-${records.length - 1}` };
     },
+    async lastExtractedSnapshotRef() {
+      for (const observation of [...records].reverse()) {
+        const extracted = extractedSnapshotRef(observation);
+        if (extracted !== null) return extracted;
+      }
+      return extractedBefore;
+    },
   };
 }
 
 test("unchanged checks record an observation without preparation or provider work", async () => {
-  const stored = recorder();
+  const stored = recorder("snapshot-prior");
   let preparationCalls = 0;
   let providerCalls = 0;
   const composition = createObserveExtractDiff({
@@ -189,6 +197,7 @@ test("recorder output cannot overwrite the observation and thrown extraction has
       this.seen = observation;
       return { observationId: "observation-1", priorObservationId: null, outcome: "completed", attempt: { providerCalls: 99 } } as never;
     },
+    async lastExtractedSnapshotRef() { return null; },
   };
   const result = await createObserveExtractDiff({
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },

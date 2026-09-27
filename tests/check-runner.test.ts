@@ -99,7 +99,9 @@ test("AC2 validator-free identical body returns unchanged-hash from prior hash c
   const store = memoryStore([prior]);
   const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
   assert.equal(result.kind, "unchanged-hash");
-  assert.equal(store.puts.length, 1);
+  // A byte-identical repeat is not appended; both refs name the stored capture.
+  assert.equal(store.puts.length, 0);
+  if (result.kind === "unchanged-hash") assert.equal(result.currentSnapshotRef, result.priorSnapshotRef);
 });
 
 test("AC3 changed body returns changed with resolvable prior and current refs", async () => {
@@ -372,7 +374,9 @@ test("L-2 same url with identical body still classifies unchanged-hash", async (
   const store = memoryStore([prior]);
   const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
   assert.equal(result.kind, "unchanged-hash");
-  assert.equal(store.puts.length, 1);
+  // A byte-identical repeat is not appended; both refs name the stored capture.
+  assert.equal(store.puts.length, 0);
+  if (result.kind === "unchanged-hash") assert.equal(result.currentSnapshotRef, result.priorSnapshotRef);
 });
 
 function rejectingStore(mode: "read" | "write"): SnapshotStore {

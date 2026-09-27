@@ -167,7 +167,7 @@ warnings.
 | `kind` | When | Extra fields |
 | --- | --- | --- |
 | `unchanged-304` | A validator-backed conditional request returned `304`; zero body transfer; the prior snapshot is not re-persisted. | `snapshotRef` |
-| `unchanged-hash` | A full body was fetched and persisted, but its sha256 `bodyHash` equals the prior, **and** it came from the same resource URL — established by Lookout's own comparison. | `priorSnapshotRef`, `currentSnapshotRef` |
+| `unchanged-hash` | A full body was fetched, but its sha256 `bodyHash` equals the prior, **and** it came from the same resource URL — established by Lookout's own comparison. A byte-identical repeat of the prior capture is not persisted again (see below). | `priorSnapshotRef`, `currentSnapshotRef` |
 | `changed` | The fresh body differs from the prior (`changeBasis: "hash"`), **or** it is the first successful observation (`changeBasis: "initial"`, `priorSnapshotRef: null`). | `priorSnapshotRef` (nullable), `currentSnapshotRef`, `changeBasis` |
 | `error` | Any operational failure — contained so the runner never rejects. | `origin` (`forage` \| `lookout`), `error` |
 
@@ -179,6 +179,14 @@ snapshot is persisted as the new baseline. (The `unchanged-304` path is already
 resource-scoped by Forage's validators, so only the hash path needs this
 guard.)
 
+A fetch that repeats the prior capture exactly is not appended to snapshot
+history: same URL, status, body bytes, redirects, render state, and `etag` /
+`last-modified` validators, with only the fetch time differing. Its
+`unchanged-hash` result names the stored capture as both `priorSnapshotRef` and
+`currentSnapshotRef`, and `checkedAt` records the check. Other response headers
+of the repeat, such as `Date`, are not kept. A stable source therefore adds no
+records, however often it is checked.
+
 `error` results preserve provenance: `origin: "forage"` carries Forage's
 discriminated `FetchError` verbatim (its `kind`, and `status` when present);
 `origin: "lookout"` carries a typed `kind` — `prior-read`, `persistence`,
@@ -189,7 +197,8 @@ are portable logical refs from Forage's `buildSnapshotSourceRef` — never
 filesystem paths. Snapshots are stored via Forage's filesystem store, rooted by
 default at `<cwd>/.kontourai/lookout/snapshots` (override with the CLI
 `--snapshot-root` flag or by injecting a store in library use). Lookout adds no
-custom filenames or retention. `resolveLookoutSnapshot()` replays one exact
+custom filenames or retention; `createLookoutSnapshotStore(root, {
+maxHistoryFiles })` passes Forage's per-source record ceiling through. `resolveLookoutSnapshot()` replays one exact
 reference through an injected store or Lookout snapshot root, authenticates its
 body and replay metadata, and never fetches. References emitted before Forage's
 replay-envelope digest remain resolvable with `integrity: "body-and-identity"`;
@@ -369,6 +378,10 @@ const composition = createObserveExtractDiff({
       // Caller-owned continuity and durable storage.
       return saveObservation(observation);
     },
+    async lastExtractedSnapshotRef(source) {
+      // The newest non-null extractedSnapshotRef(observation) you recorded.
+      return loadLastExtractedSnapshotRef(source.id);
+    },
   },
 });
 
@@ -376,7 +389,14 @@ const result = await composition.observe(source);
 ```
 
 `unchanged-304` and `unchanged-hash` are recorded as `unchanged` and never call
-the extraction capability, so they make zero preparation and provider calls.
+the extraction capability, so they make zero preparation and provider calls,
+when the capture has the same URL and body hash as the recorder's
+`lastExtractedSnapshotRef`. That is the last snapshot an observation fully
+handled: the current snapshot of a `completed`, `partial`, or `unchanged`
+observation, as `extractedSnapshotRef(observation)` returns. Otherwise the
+capture was persisted but never extracted (for example, a provider failed on the
+check that first saw it), so it is extracted now against that baseline instead
+of being reported as unchanged forever.
 Changed observations retain source and snapshot references, Traverse's prepared
 artifact identity, the proposal set, and the current/prior observation
 identities returned by the recorder. `partial`, `provider-failure`, mixed

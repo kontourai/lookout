@@ -6,6 +6,7 @@ import type {
   PreparedArtifact,
 } from "@kontourai/traverse";
 import { validatePreparedArtifact } from "@kontourai/traverse";
+import { parseSnapshotSourceRef } from "@kontourai/forage/fetch";
 import type { CheckResult } from "./check-result.js";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 import type { LookoutSource } from "./registry.js";
@@ -89,6 +90,27 @@ export interface ObserveExtractObservationIdentity {
  */
 export interface ObserveExtractRecorder {
   record(observation: ObserveExtractObservation): Promise<ObserveExtractObservationIdentity>;
+  /**
+   * The snapshot reference of this source's most recent recorded observation
+   * for which `extractedSnapshotRef(observation)` is not null, or `null` when
+   * there is none.
+   *
+   * An unchanged check is only skipped when its capture has the same URL and
+   * body hash as this snapshot. Otherwise a change that acquisition already
+   * persisted, but that was never extracted (for example because a provider
+   * failed), would be reported as unchanged forever.
+   */
+  lastExtractedSnapshotRef(source: ObserveExtractSource): Promise<string | null>;
+}
+
+/**
+ * The snapshot an observation's extraction fully handled: the current snapshot
+ * of a `completed`, `partial`, or `unchanged` observation, else `null`.
+ * Recorders use this to answer `lastExtractedSnapshotRef`.
+ */
+export function extractedSnapshotRef(observation: ObserveExtractObservation): string | null {
+  const handled = observation.outcome === "completed" || observation.outcome === "partial" || observation.outcome === "unchanged";
+  return handled && observation.sourceSnapshot !== null ? observation.sourceSnapshot.currentSnapshotRef : null;
 }
 
 export interface ObserveExtractDiffOptions {
@@ -133,11 +155,26 @@ export function createObserveExtractDiff(options: ObserveExtractDiffOptions): Ob
         return record(options.recorder, baseObservation(source, check, "acquisition-error", null, null, null, null));
       }
 
+      let sourceSnapshot = snapshotFor(check);
       if (check.kind === "unchanged-304" || check.kind === "unchanged-hash") {
-        return record(options.recorder, baseObservation(source, check, "unchanged", snapshotFor(check), null, null, null));
+        // "Unchanged" compares with the latest stored capture, which may never
+        // have been extracted. Skip extraction only when the capture matches
+        // the last one that was; otherwise extract it against that baseline.
+        let extracted: unknown;
+        try {
+          extracted = await options.recorder.lastExtractedSnapshotRef(observationSource(source));
+        } catch (cause) {
+          return { ok: false, error: error("recording-failed", "Observation recorder could not report the last extracted snapshot", cause) };
+        }
+        if (extracted !== null && (typeof extracted !== "string" || extracted === "")) {
+          return { ok: false, error: error("dependency-contract", "Observation recorder returned an invalid last extracted snapshot reference") };
+        }
+        if (extracted !== null && sameCapture(extracted, sourceSnapshot.currentSnapshotRef)) {
+          return record(options.recorder, baseObservation(source, check, "unchanged", sourceSnapshot, null, null, null));
+        }
+        sourceSnapshot = { priorSnapshotRef: extracted, currentSnapshotRef: sourceSnapshot.currentSnapshotRef };
       }
 
-      const sourceSnapshot = snapshotFor(check);
       let extraction: ExtractionResult;
       try {
         extraction = await options.extraction.extract({ source, snapshotRef: sourceSnapshot.currentSnapshotRef });
@@ -205,7 +242,7 @@ function baseObservation(
   attempt: ObserveExtractAttempt | null,
 ): ObserveExtractObservation {
   return {
-    source: { id: source.id, url: source.url, kind: source.kind },
+    source: observationSource(source),
     check,
     outcome,
     sourceSnapshot,
@@ -232,6 +269,19 @@ async function record(recorder: ObserveExtractRecorder, observation: ObserveExtr
   } catch (cause) {
     return { ok: false, error: error("recording-failed", "Observation recorder failed", cause), observation };
   }
+}
+
+function observationSource(source: LookoutSource): ObserveExtractSource {
+  return { id: source.id, url: source.url, kind: source.kind };
+}
+
+/** Two references name the same capture content: same source, resource URL, and body hash. */
+function sameCapture(left: string, right: string): boolean {
+  if (left === right) return true;
+  const a = parseSnapshotSourceRef(left);
+  const b = parseSnapshotSourceRef(right);
+  return a !== undefined && b !== undefined &&
+    a.sourceId === b.sourceId && a.url === b.url && a.bodyHash === b.bodyHash;
 }
 
 function snapshotFor(check: Exclude<CheckResult, { kind: "error" }>): ObserveExtractSourceSnapshot {
