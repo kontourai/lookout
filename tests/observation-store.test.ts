@@ -284,3 +284,19 @@ test("concrete relative roots bind at construction and comparison never opens an
     await chmod(record, 0o600);
   } finally { process.chdir(original); await rm(base, { recursive: true, force: true }); }
 });
+
+test("a proposal whose value has array holes commits and reloads", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-observations-"));
+  try {
+    const store = createObservationStore({ root });
+    const base = input("snapshot-sparse");
+    const sparse: ProposalObservationRecordInput = { ...base, observation: { ...base.observation, proposals: [{
+      fieldPath: "entries[].value", candidateValue: [, "x"], confidence: 0.9, extractor: "example-extractor:v1", provenance: { locator: "chars:0-1", excerpt: "x" },
+    }] } };
+    const committed = await store.commit(sparse, null);
+    assert.equal(committed.ok, true);
+    const latest = await store.loadLatest("source-a");
+    assert.equal(latest.ok, true, latest.ok ? "" : `${latest.error.kind}: ${latest.error.message}`);
+    if (latest.ok) assert.deepEqual(latest.value?.proposals[0]?.candidateValue, [null, "x"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

@@ -257,6 +257,15 @@ Hachure-evidence-shaped; a consumer or product lifts them into a Hachure
 `TrustBundle` with `@kontourai/surface`'s `TrustBundleBuilder` when it wants
 Surface projection — lookout itself authors nothing in the trust layer.
 
+An observation id is the SHA-256 of the record's canonical JSON: object keys
+and proposals in UTF-16 code-unit order, never the host locale's collation.
+New records are `version: 2`. Records written before this change are
+`version: 1`, whose digest used the writing host's locale collation. They
+still load on a host whose locale collates their keys the same way, and the
+next commit replaces a `version: 1` prior with a `version: 2` record. Under a
+different locale, a `version: 1` record with non-ASCII or mixed-case keys or
+values can read as `corrupt-state`.
+
 ### Verified proposal head witnesses
 
 The concrete filesystem observation store additionally exposes

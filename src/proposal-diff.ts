@@ -6,6 +6,7 @@ import {
   type IdentityResult,
 } from "./canonical-value.js";
 import { compareStructural, diffKeyedMultiset } from "./structural-diff.js";
+import { compareCodeUnits } from "./canonical-json.js";
 
 declare const proposalIdentityBrand: unique symbol;
 export type ProposalIdentity = string & { readonly [proposalIdentityBrand]: "ProposalIdentity" };
@@ -187,7 +188,7 @@ function semanticFieldOrder<E>(items: readonly { entity: E; proposal: Extraction
     if (!encoded.ok) return encoded;
     groups.set(fieldKey.value, [...(groups.get(fieldKey.value) ?? []), { item, key: encoded.key, index }]);
   }
-  const ordered = [...groups.values()].flatMap((group) => group.sort((left, right) => left.key.localeCompare(right.key) || left.index - right.index));
+  const ordered = [...groups.values()].flatMap((group) => group.sort((left, right) => compareCodeUnits(left.key, right.key) || left.index - right.index));
   return { ok: true, value: ordered.map(({ item }) => item) };
 }
 

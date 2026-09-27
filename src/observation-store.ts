@@ -4,6 +4,7 @@ import { lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, u
 import path from "node:path";
 import { types } from "node:util";
 import type { ExtractionProposal } from "@kontourai/traverse";
+import { canonicalJson, compareCodeUnits } from "./canonical-json.js";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 
 export interface ObservationCheckAnchor {
@@ -30,13 +31,24 @@ export interface StoredProposalObservationV1 {
   readonly proposals: readonly ExtractionProposal[];
 }
 
+/**
+ * Same fields as version 1. The observationId is computed over code-unit-ordered
+ * canonical JSON, so it does not depend on the host locale. New records are
+ * always version 2.
+ */
+export interface StoredProposalObservationV2 extends Omit<StoredProposalObservationV1, "version"> {
+  readonly version: 2;
+}
+
+export type StoredProposalObservation = StoredProposalObservationV1 | StoredProposalObservationV2;
+
 export type ObservationStoreErrorKind = "invalid-input" | "corrupt-state" | "continuity-conflict" | "io-error";
 export interface ObservationStoreError { readonly kind: ObservationStoreErrorKind; readonly message: string; readonly cause?: unknown }
 export type ObservationStoreResult<T> = { readonly ok: true; readonly value: T; readonly warnings?: readonly string[] } | { readonly ok: false; readonly error: ObservationStoreError };
 
 export interface ObservationStore {
-  loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservationV1 | null>>;
-  commit(input: ProposalObservationRecordInput, expectedPriorId: string | null): Promise<ObservationStoreResult<StoredProposalObservationV1>>;
+  loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservation | null>>;
+  commit(input: ProposalObservationRecordInput, expectedPriorId: string | null): Promise<ObservationStoreResult<StoredProposalObservation>>;
 }
 
 /** Finite caller-controlled ceilings for a verified proposal-head read. */
@@ -94,14 +106,21 @@ function sourceKey(sourceId: string): string {
   return `${encodeURIComponent(sourceId).replaceAll("%", "_").slice(0, 48)}-${createHash("sha256").update(sourceId).digest("hex").slice(0, 16)}`;
 }
 
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)]));
-  return value;
+function canonical(value: unknown): string { return `${canonicalJson(value)}\n`; }
+function digest(body: Omit<StoredProposalObservation, "observationId">): string {
+  return createHash("sha256").update(body.version === 1 ? legacyCanonical(body) : canonical(body)).digest("hex");
 }
 
-function canonical(value: unknown): string { return `${JSON.stringify(stable(value))}\n`; }
-function digest(body: Omit<StoredProposalObservationV1, "observationId">): string { return createHash("sha256").update(canonical(body)).digest("hex"); }
+// Version 1 digests only. Version 1 records were hashed with keys sorted by the
+// host locale and then rebuilt with Object.fromEntries, which moves integer-like
+// keys first. A version 1 record therefore verifies only under a locale that
+// collates its keys the way the writing host did. Do not use this for new records.
+function legacyStable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(legacyStable);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, legacyStable(item)]));
+  return value;
+}
+function legacyCanonical(value: unknown): string { return `${JSON.stringify(legacyStable(value))}\n`; }
 
 function resolveHeadLimits(limits: VerifiedHeadLimits | undefined): ResolvedHeadLimits | null {
   try {
@@ -218,7 +237,7 @@ function snapshotWitness(value: unknown): { readonly kind: "ok"; readonly witnes
   } catch { return { kind: "corrupt" }; }
 }
 
-function buildRecord(input: ProposalObservationRecordInput): ObservationStoreResult<StoredProposalObservationV1> {
+function buildRecord(input: ProposalObservationRecordInput): ObservationStoreResult<StoredProposalObservationV2> {
   try {
   const { observation, check } = input;
   if (!observation || typeof observation.sourceId !== "string" || observation.sourceId === "" || typeof observation.snapshotRef !== "string" || observation.snapshotRef === "" || typeof observation.observedAt !== "string" || observation.observedAt === "" || !Array.isArray(observation.proposals) || observation.proposals.some((proposal) => !validProposal(proposal))) {
@@ -227,8 +246,8 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
   if (!check || check.currentSnapshotRef !== observation.snapshotRef || typeof check.checkedAt !== "string" || (check.resultKind !== "changed" && check.resultKind !== "unchanged-hash") || typeof input.recordedAt !== "string") {
     return { ok: false, error: { kind: "invalid-input", message: "Check anchor must match the current observation snapshot" } };
   }
-  const proposals = [...observation.proposals].sort((a, b) => canonical(a).localeCompare(canonical(b)));
-  const body = { version: 1 as const, sourceKey: sourceKey(observation.sourceId), sourceId: observation.sourceId, snapshotRef: observation.snapshotRef, observedAt: observation.observedAt, recordedAt: input.recordedAt, check, proposals };
+  const proposals = [...observation.proposals].sort((a, b) => compareCodeUnits(canonical(a), canonical(b)));
+  const body = { version: 2 as const, sourceKey: sourceKey(observation.sourceId), sourceId: observation.sourceId, snapshotRef: observation.snapshotRef, observedAt: observation.observedAt, recordedAt: input.recordedAt, check, proposals };
   try { return { ok: true, value: { ...body, observationId: digest(body) } }; }
   catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Observation could not be serialized", cause } }; }
   } catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Current proposal observation could not be inspected", cause } }; }
@@ -244,17 +263,17 @@ function validProposal(value: unknown): value is ExtractionProposal {
   return typeof provenance.locator === "string" && provenance.locator !== "" && typeof provenance.excerpt === "string";
 }
 
-function validate(value: unknown, expectedSourceId: string): ObservationStoreResult<StoredProposalObservationV1> {
+function validate(value: unknown, expectedSourceId: string): ObservationStoreResult<StoredProposalObservation> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: { kind: "corrupt-state", message: "Stored observation is not an object" } };
-  const item = value as Partial<StoredProposalObservationV1>;
-  if (item.version !== 1 || item.sourceId !== expectedSourceId || item.sourceKey !== sourceKey(expectedSourceId) || typeof item.observationId !== "string" || !/^[a-f0-9]{64}$/.test(item.observationId) || typeof item.snapshotRef !== "string" || item.snapshotRef === "" || typeof item.observedAt !== "string" || item.observedAt === "" || typeof item.recordedAt !== "string" || item.recordedAt === "" || !Array.isArray(item.proposals) || item.proposals.some((proposal) => !validProposal(proposal)) || !item.check || typeof item.check !== "object" || typeof item.check.checkedAt !== "string" || item.check.checkedAt === "" || (item.check.resultKind !== "changed" && item.check.resultKind !== "unchanged-hash") || item.check.currentSnapshotRef !== item.snapshotRef) {
+  const item = value as Partial<StoredProposalObservation>;
+  if ((item.version !== 1 && item.version !== 2) || item.sourceId !== expectedSourceId || item.sourceKey !== sourceKey(expectedSourceId) || typeof item.observationId !== "string" || !/^[a-f0-9]{64}$/.test(item.observationId) || typeof item.snapshotRef !== "string" || item.snapshotRef === "" || typeof item.observedAt !== "string" || item.observedAt === "" || typeof item.recordedAt !== "string" || item.recordedAt === "" || !Array.isArray(item.proposals) || item.proposals.some((proposal) => !validProposal(proposal)) || !item.check || typeof item.check !== "object" || typeof item.check.checkedAt !== "string" || item.check.checkedAt === "" || (item.check.resultKind !== "changed" && item.check.resultKind !== "unchanged-hash") || item.check.currentSnapshotRef !== item.snapshotRef) {
     return { ok: false, error: { kind: "corrupt-state", message: "Stored observation schema or continuity is invalid" } };
   }
-  const { observationId, ...body } = item as StoredProposalObservationV1;
+  const { observationId, ...body } = item as StoredProposalObservation;
   try {
     if (digest(body) !== observationId) return { ok: false, error: { kind: "corrupt-state", message: "Stored observation digest does not match its body" } };
   } catch (cause) { return { ok: false, error: { kind: "corrupt-state", message: "Stored observation is not serializable", cause } }; }
-  return { ok: true, value: item as StoredProposalObservationV1 };
+  return { ok: true, value: item as StoredProposalObservation };
 }
 
 async function rejectSymlink(file: string, allowMissing = true): Promise<void> {
@@ -278,7 +297,7 @@ async function atomicWrite(file: string, bytes: string, kind: "record" | "pointe
 
 export function createObservationStore(options: CreateObservationStoreOptions = {}): ObservationStore & VerifiedHeadObservationStore {
   const root = path.resolve(options.root ?? path.join(process.cwd(), ".kontourai", "lookout", "observations"));
-  async function loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservationV1 | null>> {
+  async function loadLatest(sourceId: string): Promise<ObservationStoreResult<StoredProposalObservation | null>> {
     try {
       const dir = path.join(root, sourceKey(sourceId));
       await rejectSymlink(root); await rejectSymlink(dir);
@@ -297,8 +316,8 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
     } catch (cause) { return { ok: false, error: { kind: "io-error", message: "Could not load latest observation", cause } }; }
   }
 
-  async function commit(input: ProposalObservationRecordInput, expectedPriorId: string | null): Promise<ObservationStoreResult<StoredProposalObservationV1>> {
-    let made: ObservationStoreResult<StoredProposalObservationV1>;
+  async function commit(input: ProposalObservationRecordInput, expectedPriorId: string | null): Promise<ObservationStoreResult<StoredProposalObservation>> {
+    let made: ObservationStoreResult<StoredProposalObservationV2>;
     try { options.faults?.beforeSerialize?.(); made = buildRecord(input); } catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Observation serialization failed", cause } }; }
     if (!made.ok) return made;
     const record = made.value; const dir = path.join(root, record.sourceKey); const lockPath = path.join(dir, ".lock");
@@ -327,7 +346,7 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
         const inspected = await Promise.all(records.map(async (name) => ({ name, text: await readFile(path.join(dir, name), "utf8") })));
         const valid = inspected.map(({ name, text }) => { try { const checked = validate(JSON.parse(text), record.sourceId); return checked.ok ? { name, recordedAt: checked.value.recordedAt, id: checked.value.observationId } : null; } catch { return null; } }).filter((item): item is { name: string; recordedAt: string; id: string } => item !== null);
         const preserve = new Set([record.observationId, expectedPriorId].filter((item): item is string => item !== null));
-        const extras = valid.filter((item) => !preserve.has(item.id)).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id));
+        const extras = valid.filter((item) => !preserve.has(item.id)).sort((a, b) => compareCodeUnits(b.recordedAt, a.recordedAt) || compareCodeUnits(b.id, a.id));
         await Promise.all(extras.map((item) => rm(path.join(dir, item.name), { force: true })));
       } catch (cause) { warnings.push(`Observation committed but retention cleanup failed: ${cause instanceof Error ? cause.message : String(cause)}`); }
       return { ok: true, value: record, ...(warnings.length ? { warnings } : {}) };
@@ -348,7 +367,7 @@ export function createObservationStore(options: CreateObservationStoreOptions = 
     options.faults?.beforeHeadRecordRead?.();
     const record = await boundedText(path.join(root, sourceKey(sourceId), `${before.metadata.observationId}.json`), limits.maxRecordBytes);
     if (record.kind !== "ok") return record;
-    let loaded: ObservationStoreResult<StoredProposalObservationV1>;
+    let loaded: ObservationStoreResult<StoredProposalObservation>;
     try { loaded = validate(JSON.parse(record.text), sourceId); }
     catch { return { kind: "corrupt" }; }
     if (!loaded.ok || loaded.value.observationId !== before.metadata.observationId) return { kind: "corrupt" };
