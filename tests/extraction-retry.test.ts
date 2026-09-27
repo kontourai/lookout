@@ -22,7 +22,7 @@ function harness() {
   let tick = 0;
   const runner = createCheckRunner({
     store,
-    fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0 }, {
+    fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0, minDelayMs: 0 }, {
       ...options,
       clock: () => `2026-09-01T00:00:${String(++tick).padStart(2, "0")}.000Z`,
       fetch: async () => new Response(page.body, { status: 200 }),

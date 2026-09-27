@@ -28,7 +28,7 @@ function runnerFor(store: ReturnType<typeof createLookoutSnapshotStore>, page: {
   let tick = 0;
   return createCheckRunner({
     store,
-    fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0 }, {
+    fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0, minDelayMs: 0 }, {
       ...options,
       clock: () => new Date(Date.UTC(2026, 8, 1) + ++tick * 60_000).toISOString(),
       // A new Date header on every response, as real servers send.
