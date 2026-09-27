@@ -1,7 +1,8 @@
 import type { LookoutSource } from "./registry.js";
 import { diffProposalSets, type ProposalDiffEvent, type ProposalSetDiff, type ProposalSetDiffInput, type ProposalSetFacts, type ProposalSetObservation } from "./proposal-diff.js";
-import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservationV1 } from "./observation-store.js";
+import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservation } from "./observation-store.js";
 import type { SnapshotStore } from "@kontourai/forage";
+import { compareCodeUnits } from "./canonical-json.js";
 import { admitProposalObservation } from "./observation-admission.js";
 
 // Neutral drift emission. Lookout is a CHANGE building block: it detects and
@@ -40,7 +41,7 @@ export interface DriftSuccess {
   readonly facts: readonly DriftFact[];
   /** The prior observation this drift was diffed against, or null on a first-ever (baseline) observation. */
   readonly priorObservationId: string | null;
-  readonly committedObservation: StoredProposalObservationV1;
+  readonly committedObservation: StoredProposalObservation;
   readonly warnings: readonly string[];
 }
 export type DriftErrorKind = "invalid-input" | "prior-state-error" | "diff-error" | "persistence-error" | "serialization-error" | "unexpected";
@@ -70,11 +71,11 @@ export interface CreateDriftEmitterOptions<E> {
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
+  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => compareCodeUnits(a, b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
   return JSON.stringify(value) ?? "undefined";
 }
 function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
-  const sorted = <T>(items: readonly T[]) => [...items].sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
+  const sorted = <T>(items: readonly T[]) => [...items].sort((a, b) => compareCodeUnits(stableJson(a), stableJson(b)));
   return {
     events: sorted(value.events),
     facts: {

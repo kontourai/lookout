@@ -1,6 +1,6 @@
 import type { SnapshotStore } from "@kontourai/forage";
 import type { LookoutSource } from "./registry.js";
-import type { StoredProposalObservationV1, ObservationCheckAnchor } from "./observation-store.js";
+import type { StoredProposalObservation, ObservationCheckAnchor } from "./observation-store.js";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 import { resolveLookoutSnapshot } from "./snapshot-store.js";
 
@@ -67,7 +67,7 @@ export interface AdmitProposalObservationInput {
   readonly current: ProposalSetObservation;
   readonly check: ObservationCheckAnchor;
   /** The already-selected observation-store record; admission never selects or persists continuity. */
-  readonly prior: StoredProposalObservationV1 | null;
+  readonly prior: StoredProposalObservation | null;
   /** Explicit capability: admission never chooses a snapshot root or storage implementation. */
   readonly snapshotStore: SnapshotStore;
 }
