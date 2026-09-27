@@ -12,6 +12,13 @@ test("canonical JSON writes keys in code-unit order, including integer-like keys
   assert.deepEqual(JSON.parse(canonicalJson(value)), JSON.parse(JSON.stringify(value)));
 });
 
+test("canonical JSON matches JSON.stringify for array holes and toJSON", () => {
+  const value = { holes: [, 1, , ], empty: new Array(2), when: new Date(Date.UTC(2026, 0, 2)), custom: { toJSON: (key: string) => `key:${key}` } };
+  const text = canonicalJson(value);
+  assert.equal(text, '{"custom":"key:custom","empty":[null,null],"holes":[null,1,null],"when":"2026-01-02T00:00:00.000Z"}');
+  assert.deepEqual(JSON.parse(text), JSON.parse(JSON.stringify(value)));
+});
+
 test("canonical JSON refuses values JSON cannot encode", () => {
   assert.throws(() => canonicalJson(undefined), TypeError);
   assert.throws(() => canonicalJson({ big: 1n }), TypeError);
