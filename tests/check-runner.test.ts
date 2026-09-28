@@ -99,7 +99,21 @@ test("AC2 validator-free identical body returns unchanged-hash from prior hash c
   const store = memoryStore([prior]);
   const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
   assert.equal(result.kind, "unchanged-hash");
+  // A byte-identical repeat is not appended; both refs name the stored capture.
+  assert.equal(store.puts.length, 0);
+  if (result.kind === "unchanged-hash") assert.equal(result.currentSnapshotRef, result.priorSnapshotRef);
+});
+
+test("a same-body capture with a different status is not treated as a repeat", async () => {
+  // e.g. a 200 page now served with the same bytes as a 203: the status is
+  // part of the durable capture, so the new capture must be stored.
+  const prior = snapshot("alpha", "same", { fetchedAt: "2026-07-10T10:00:00.000Z", status: 200 });
+  const current = snapshot("alpha", "same", { fetchedAt: "2026-07-10T11:00:00.000Z", status: 203 });
+  const store = memoryStore([prior]);
+  const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
+  assert.equal(result.kind, "unchanged-hash");
   assert.equal(store.puts.length, 1);
+  if (result.kind === "unchanged-hash") assert.notEqual(result.currentSnapshotRef, result.priorSnapshotRef);
 });
 
 test("AC3 changed body returns changed with resolvable prior and current refs", async () => {
@@ -372,7 +386,9 @@ test("L-2 same url with identical body still classifies unchanged-hash", async (
   const store = memoryStore([prior]);
   const result = await createCheckRunner({ store, fetchSource: async () => ({ snapshot: current }) }).check(source("alpha"));
   assert.equal(result.kind, "unchanged-hash");
-  assert.equal(store.puts.length, 1);
+  // A byte-identical repeat is not appended; both refs name the stored capture.
+  assert.equal(store.puts.length, 0);
+  if (result.kind === "unchanged-hash") assert.equal(result.currentSnapshotRef, result.priorSnapshotRef);
 });
 
 function rejectingStore(mode: "read" | "write"): SnapshotStore {

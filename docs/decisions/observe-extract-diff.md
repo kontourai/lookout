@@ -11,6 +11,8 @@ evidence:
     ref: https://github.com/kontourai/traverse/issues/64
   - kind: doc
     ref: src/observe-extract-diff.ts
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/86
 ---
 # Observe-extract-diff composition and typed extraction outcomes
 
@@ -24,9 +26,20 @@ external caller's observation format.
 
 The composition calls acquisition first. A typed acquisition error is recorded
 as an `acquisition-error` observation. `unchanged-304` and `unchanged-hash`
-each record an `unchanged` observation and make zero extraction calls. This
-means unchanged sources make zero preparation and provider calls: the only code
-that could do either is behind the extraction capability, which is not invoked.
+each record an `unchanged` observation and make zero extraction calls when the
+capture has the same URL and body hash as the recorder's
+`lastExtractedSnapshotRef`. This means unchanged sources make zero preparation
+and provider calls: the only code that could do either is behind the extraction
+capability, which is not invoked.
+
+"Unchanged" is relative to the latest stored capture, and acquisition stores a
+capture before extraction runs (extraction resolves it by reference). A capture
+whose extraction failed is therefore already the baseline on the next check. So
+the composition asks the recorder for the last snapshot an observation fully
+handled (`extractedSnapshotRef`: the current snapshot of a `completed`,
+`partial`, or `unchanged` observation). When the unchanged capture differs from
+it, or there is none, the capture is extracted against that baseline rather
+than reported as unchanged (kontourai/lookout#86).
 
 For a `changed` check, the extraction capability receives the registered source
 and the immutable current snapshot reference. Its Traverse result is reduced to

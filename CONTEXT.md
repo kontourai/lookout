@@ -46,9 +46,10 @@ results rather than throwing.
   - **`unchanged-304`**: a validator-backed conditional request returned `304`;
     the prior snapshot was re-served with zero body transfer and is not
     re-persisted. Trustworthy only with Forage's validator-scoped revalidation.
-  - **`unchanged-hash`**: a full body was fetched and persisted, but its sha256
+  - **`unchanged-hash`**: a full body was fetched, but its sha256
     `bodyHash` equals the prior snapshot's — no drift, established by L1's own
-    comparison.
+    comparison. A byte-identical repeat of the prior capture is not persisted
+    again; both refs then name the stored capture.
   - **`changed`**: the fresh body was persisted and differs from the prior
     (`changeBasis: "hash"`), or it is the **first successful observation**
     (`changeBasis: "initial"` with a null prior ref).
@@ -58,8 +59,9 @@ results rather than throwing.
     `dependency-contract` | `unexpected`).
 - **Snapshot Store** (`createLookoutSnapshotStore`): a thin wrapper over
   Forage's filesystem snapshot store, rooted by default at
-  `<cwd>/.kontourai/lookout/snapshots` with an injectable root. Lookout adds no
-  custom filenames, retention, or storage policy. `resolveLookoutSnapshot`
+  `<cwd>/.kontourai/lookout/snapshots` with an injectable root and an optional
+  `maxHistoryFiles` passed to Forage. Lookout adds no custom filenames,
+  retention, or storage policy. `resolveLookoutSnapshot`
   resolves and authenticates one exact durable reference offline through this
   store boundary.
 - **Provider Resolver** (`ProviderResolver`): a Datum `resolve` capability
@@ -80,8 +82,10 @@ results rather than throwing.
   `priorObservationId`.
 - **Observe-extract-diff composition** (`createObserveExtractDiff`): an
   additive, injected acquisition/extraction/recording composition. It records
-  `unchanged-304` and `unchanged-hash` observations without calling extraction;
-  therefore no preparation or provider work occurs for unchanged sources. A
+  `unchanged-304` and `unchanged-hash` observations without calling extraction
+  when the capture matches the recorder's last extracted snapshot (same URL and
+  body hash); therefore no preparation or provider work occurs for unchanged
+  sources. An unchanged capture that was never extracted is extracted instead. A
   changed source retains its registered identity, prior/current snapshot refs,
   Traverse prepared-artifact identity, proposal-set observation, compact
   attempt record, and recorder-provided observation identities. Traverse's

@@ -11,6 +11,8 @@ evidence:
     ref: https://github.com/kontourai/forage/issues/15
   - kind: url
     ref: https://github.com/kontourai/lookout/issues/19
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/87
 ---
 # L1 source registry, drift classification, and result contract
 
@@ -47,7 +49,11 @@ Forage snapshots. The decisions that shape the observable contract:
 
 - **Store before emit.** A successful `changed`/`unchanged-hash` result is only
   returned after the required `store.put` resolves, so every emitted provenance
-  ref is replayable.
+  ref is replayable. A byte-identical repeat of the prior capture (same URL,
+  status, body, redirects, render state, and `etag`/`last-modified`) is not
+  put again: its `unchanged-hash` result names the already-stored prior capture
+  as both refs, so the refs stay replayable and stable sources do not grow
+  history (kontourai/lookout#87).
 
 - **Logical snapshot refs, never paths.** Provenance uses Forage's
   `buildSnapshotSourceRef` (`unchanged-304` carries one ref; fresh comparisons

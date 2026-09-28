@@ -6,10 +6,23 @@ import {
   type SnapshotSourceRefResolution,
 } from "@kontourai/forage/fetch";
 
+export interface LookoutSnapshotStoreOptions {
+  /**
+   * Per-source record ceiling, passed to Forage's filesystem store (1 to
+   * 10,000; Forage's default is 10,000). It cannot change after a source's
+   * store directory is initialized.
+   */
+  readonly maxHistoryFiles?: number;
+}
+
 export function createLookoutSnapshotStore(
   root = path.join(process.cwd(), ".kontourai", "lookout", "snapshots"),
+  options: LookoutSnapshotStoreOptions = {},
 ): SnapshotStore {
-  return createFilesystemSnapshotStore({ root });
+  return createFilesystemSnapshotStore({
+    root,
+    ...(options.maxHistoryFiles === undefined ? {} : { maxHistoryFiles: options.maxHistoryFiles }),
+  });
 }
 
 export type ResolveLookoutSnapshotOptions =

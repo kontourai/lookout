@@ -34,7 +34,7 @@ export {
   createLookoutSnapshotStore,
   resolveLookoutSnapshot,
 } from "./snapshot-store.js";
-export type { ResolveLookoutSnapshotOptions } from "./snapshot-store.js";
+export type { LookoutSnapshotStoreOptions, ResolveLookoutSnapshotOptions } from "./snapshot-store.js";
 export { admitProposalObservation } from "./observation-admission.js";
 export type { AdmitProposalObservationInput, AdmittedProposalObservation, AdmittedSnapshotIdentity, ObservationAdmissionError, ObservationAdmissionErrorKind, ObservationAdmissionResult } from "./observation-admission.js";
 export { admitSourceCapture, admitSourceCheck } from "./source-admission.js";
@@ -79,7 +79,7 @@ export { createDriftEmitter } from "./drift-emission.js";
 export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput } from "./drift-emission.js";
 export { checkSchemaCoverage } from "./coverage.js";
 export type { SchemaCoverageGap, SchemaCoverageResult } from "./coverage.js";
-export { createObserveExtractDiff } from "./observe-extract-diff.js";
+export { createObserveExtractDiff, extractedSnapshotRef } from "./observe-extract-diff.js";
 export type {
   ObserveExtractAcquisition,
   ObserveExtractAttempt,
