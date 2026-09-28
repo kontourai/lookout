@@ -6,6 +6,7 @@ import type {
   PreparedArtifact,
 } from "@kontourai/traverse";
 import { createPreparedArtifact } from "@kontourai/traverse";
+import { createInMemorySnapshotStore } from "@kontourai/forage";
 import { createObserveExtractDiff, extractedSnapshotRef, type ObserveExtractObservation, type ObserveExtractRecorder } from "../src/index.js";
 import { source } from "./helpers.js";
 
@@ -58,7 +59,7 @@ test("unchanged checks record an observation without preparation or provider wor
   const stored = recorder("snapshot-prior");
   let preparationCalls = 0;
   let providerCalls = 0;
-  const composition = createObserveExtractDiff({
+  const composition = createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "unchanged-304", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], snapshotRef: "snapshot-prior" }; } },
     extraction: { async extract() { preparationCalls += 1; providerCalls += 1; return extraction(); } },
     recorder: stored,
@@ -77,7 +78,7 @@ test("unchanged checks record an observation without preparation or provider wor
 
 test("a changed source retains the snapshot, prepared artifact, proposal set, and continuity identities", async () => {
   const stored = recorder();
-  const composition = createObserveExtractDiff({
+  const composition = createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: "snapshot-prior", currentSnapshotRef: "snapshot-current", changeBasis: "hash" }; } },
     extraction: { async extract() { return extraction(); } },
     recorder: stored,
@@ -100,7 +101,7 @@ test("a changed source retains the snapshot, prepared artifact, proposal set, an
 
 test("the first changed observation is a baseline record, not fabricated proposal additions or removals", async () => {
   const stored = recorder();
-  const composition = createObserveExtractDiff({
+  const composition = createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-first", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({}, "snapshot-first"); } },
     recorder: stored,
@@ -117,7 +118,7 @@ test("the first changed observation is a baseline record, not fabricated proposa
 
 test("partial extraction and provider failure stay as distinct typed observation outcomes", async () => {
   const stored = recorder();
-  const partial = createObserveExtractDiff({
+  const partial = createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-partial", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({ partial: { reason: "max-provider-calls", completedChunks: 1, remainingChunks: 2 } }, "snapshot-partial"); } },
     recorder: stored,
@@ -127,7 +128,7 @@ test("partial extraction and provider failure stay as distinct typed observation
   assert.equal(partialResult.value.outcome, "partial");
   assert.equal(partialResult.value.attempt?.partial?.reason, "max-provider-calls");
 
-  const failed = createObserveExtractDiff({
+  const failed = createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-failed", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({ proposals: [], error: "provider unavailable", providerFailures: [{ provider: "example", kind: "unavailable", retryable: true, message: "provider unavailable", native: { status: 503 } }] }, "snapshot-failed"); } },
     recorder: stored,
@@ -149,7 +150,7 @@ test("a non-fatal provider failure cannot be classified as completed and mixed p
     ["snapshot-provider", undefined, "provider-failure"],
     ["snapshot-mixed", { reason: "max-provider-calls" as const, completedChunks: 1, remainingChunks: 1 }, "partial-provider-failure"],
   ] as const) {
-    const result = await createObserveExtractDiff({
+    const result = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
       acquisition: { async check() { return changed(snapshotRef); } },
       extraction: { async extract() { return extraction({ providerFailures: [providerFailure], ...(partial === undefined ? {} : { partial }) }, snapshotRef); } },
       recorder: recorder(),
@@ -164,7 +165,7 @@ test("a non-fatal provider failure cannot be classified as completed and mixed p
 
 test("rejects acquisition identity and prepared-artifact snapshot mismatches", async () => {
   const stored = recorder();
-  const mismatchedCheck = await createObserveExtractDiff({
+  const mismatchedCheck = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "different", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },
     extraction: { async extract() { assert.fail("must not extract"); } },
     recorder: stored,
@@ -173,7 +174,7 @@ test("rejects acquisition identity and prepared-artifact snapshot mismatches", a
   if (!mismatchedCheck.ok) assert.equal(mismatchedCheck.error.kind, "dependency-contract");
   assert.equal(stored.records.length, 0);
 
-  const mismatchedArtifact = await createObserveExtractDiff({
+  const mismatchedArtifact = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({}, "different-snapshot"); } },
     recorder: stored,
@@ -182,7 +183,7 @@ test("rejects acquisition identity and prepared-artifact snapshot mismatches", a
   if (!mismatchedArtifact.ok) assert.equal(mismatchedArtifact.error.kind, "dependency-contract");
   assert.equal(stored.records.length, 0);
 
-  const invalidArtifact = await createObserveExtractDiff({
+  const invalidArtifact = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({ preparedArtifact: { ...artifact, ref: "not-a-ref" as PreparedArtifact["ref"] } }); } },
     recorder: stored,
@@ -199,7 +200,7 @@ test("recorder output cannot overwrite the observation and thrown extraction has
     },
     async lastExtractedSnapshotRef() { return null; },
   };
-  const result = await createObserveExtractDiff({
+  const result = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },
     extraction: { async extract() { throw new Error("authorization=secret"); } },
     recorder: stored,
@@ -213,7 +214,7 @@ test("recorder output cannot overwrite the observation and thrown extraction has
 
 test("free-form extraction warnings cannot cross the durable recording boundary", async () => {
   const stored = recorder();
-  const result = await createObserveExtractDiff({
+  const result = await createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" }; } },
     extraction: { async extract() { return extraction({ warnings: ["authorization=secret-value"] }); } },
     recorder: stored,
@@ -224,4 +225,10 @@ test("free-form extraction warnings cannot cross the durable recording boundary"
   assert.equal(JSON.stringify(stored.records[0]).includes("secret-value"), false);
   assert.equal(JSON.stringify(result).includes("secret-value"), false);
   assert.equal(result.ok && result.value.attempt !== null && "warnings" in result.value.attempt, false);
+});
+
+test("a composition without a snapshot store is refused when created", () => {
+  const options = { acquisition: { async check() { throw new Error("not reached"); } }, extraction: { async extract() { throw new Error("not reached"); } }, recorder: recorder() };
+  assert.throws(() => createObserveExtractDiff(options as unknown as Parameters<typeof createObserveExtractDiff>[0]), /requires snapshots/);
+  assert.throws(() => createObserveExtractDiff({ ...options, snapshots: {} } as unknown as Parameters<typeof createObserveExtractDiff>[0]), /requires snapshots/);
 });

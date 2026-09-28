@@ -1,7 +1,7 @@
 export { runCli } from "./cli.js";
 export type { RunCliOptions } from "./cli.js";
 export { createCheckRunner } from "./check-runner.js";
-export type { CheckRunner, CreateCheckRunnerOptions, FetchSource } from "./check-runner.js";
+export type { CheckRunner, CreateCheckRunnerOptions, FetchSource, SnapshotRetention } from "./check-runner.js";
 export type {
   ChangedResult,
   CheckResult,

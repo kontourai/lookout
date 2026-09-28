@@ -13,6 +13,8 @@ evidence:
     ref: https://github.com/kontourai/lookout/issues/19
   - kind: issue
     ref: https://github.com/kontourai/lookout/issues/87
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/89
 ---
 # L1 source registry, drift classification, and result contract
 
@@ -50,10 +52,15 @@ Forage snapshots. The decisions that shape the observable contract:
 - **Store before emit.** A successful `changed`/`unchanged-hash` result is only
   returned after the required `store.put` resolves, so every emitted provenance
   ref is replayable. A byte-identical repeat of the prior capture (same URL,
-  status, body, redirects, render state, and `etag`/`last-modified`) is not
+  status, body, text decoding, redirects, render state, and
+  `etag`/`last-modified`) is not
   put again: its `unchanged-hash` result names the already-stored prior capture
   as both refs, so the refs stay replayable and stable sources do not grow
-  history (kontourai/lookout#87).
+  history (kontourai/lookout#87). Changed captures are bounded by opt-in
+  retention through Forage's `prune`: the newest `keepLast`, the latest, the
+  result's prior, and every caller-cited snapshot are kept. When the cited set
+  cannot be read, nothing is pruned. The same bytes under a charset that
+  decodes differently are a new capture (kontourai/lookout#89).
 
 - **Logical snapshot refs, never paths.** Provenance uses Forage's
   `buildSnapshotSourceRef` (`unchanged-304` carries one ref; fresh comparisons
@@ -65,8 +72,8 @@ Forage snapshots. The decisions that shape the observable contract:
   not exceptions: a Forage `FetchError` is preserved with its discriminant
   under `origin: "forage"`; a rejected store read/write, a throwing injected
   fetch, a malformed dependency result, or any unexpected exception becomes an
-  `origin: "lookout"` error (`prior-read` | `persistence` | `dependency-contract`
-  | `unexpected`). `checkAll` runs sources sequentially, returns one ordered
+  `origin: "lookout"` error (`prior-read` | `persistence` | `history-full` |
+  `dependency-contract` | `unexpected`). `checkAll` runs sources sequentially, returns one ordered
   result per source, and continues past errors.
 
 - **JSONL CLI, external scheduling.** `lookout check <id>` and

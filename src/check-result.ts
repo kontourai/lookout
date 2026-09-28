@@ -28,6 +28,7 @@ export interface ChangedResult extends CheckResultCommon {
 export type LookoutErrorKind =
   | "prior-read"
   | "persistence"
+  | "history-full"
   | "dependency-contract"
   | "unexpected";
 

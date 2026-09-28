@@ -180,25 +180,54 @@ resource-scoped by Forage's validators, so only the hash path needs this
 guard.)
 
 A fetch that repeats the prior capture exactly is not appended to snapshot
-history: same URL, status, body bytes, redirects, render state, and `etag` /
-`last-modified` validators, with only the fetch time differing. Its
+history: same URL, status, body bytes, text decoding, redirects, render state,
+and `etag` / `last-modified` validators, with only the fetch time differing. Its
 `unchanged-hash` result names the stored capture as both `priorSnapshotRef` and
 `currentSnapshotRef`, and `checkedAt` records the check. Other response headers
 of the repeat, such as `Date`, are not kept. A stable source therefore adds no
-records, however often it is checked.
+records, however often it is checked. The text decoding is the encoding the
+declared `Content-Type` charset resolves to, so the same bytes under another
+charset (other text for an extractor) are a new capture, while `utf8` and
+`utf-8` are the same decoding.
+
+Changed captures still grow history. Pass `retention` to bound it with Forage's
+`prune`: after each stored capture, the runner keeps the newest `keepLast`
+snapshots, the latest, the prior capture its result names, and every reference
+`cited(sourceId)` returns. Cite what your observations, review rounds, and
+exported receipts still reference. If `cited` throws or returns anything but
+snapshot references, nothing is pruned and the result carries a warning.
+`cited` is read just before each prune, outside the store's lock, so record a
+citation before handing its reference out.
+
+```ts
+const runner = createCheckRunner({
+  store,
+  retention: { keepLast: 20, cited: (sourceId) => loadCitedSnapshotRefs(sourceId) },
+});
+```
+
+**Upgrading to 0.7 (Forage 1.0).** New text captures hash their exact bytes.
+A text page whose bytes are not plain UTF-8 (a non-UTF-8 charset, a byte-order
+mark, or invalid UTF-8) therefore reports `changed` once, on its first check
+after the upgrade, and is extracted again. Drift comes from proposal diffs, so
+a page whose extracted content is identical emits nothing. Plain UTF-8 pages
+keep their stored capture.
 
 `error` results preserve provenance: `origin: "forage"` carries Forage's
 discriminated `FetchError` verbatim (its `kind`, and `status` when present);
 `origin: "lookout"` carries a typed `kind` — `prior-read`, `persistence`,
-`dependency-contract`, or `unexpected`.
+`history-full`, `dependency-contract`, or `unexpected`. `history-full` means the
+source holds Forage's `maxHistoryFiles` records; with `retention` the runner
+prunes once and retries before reporting it.
 
 Snapshot references (`snapshotRef` / `priorSnapshotRef` / `currentSnapshotRef`)
 are portable logical refs from Forage's `buildSnapshotSourceRef` — never
 filesystem paths. Snapshots are stored via Forage's filesystem store, rooted by
 default at `<cwd>/.kontourai/lookout/snapshots` (override with the CLI
 `--snapshot-root` flag or by injecting a store in library use). Lookout adds no
-custom filenames or retention; `createLookoutSnapshotStore(root, {
-maxHistoryFiles })` passes Forage's per-source record ceiling through. `resolveLookoutSnapshot()` replays one exact
+custom filenames or storage format; `createLookoutSnapshotStore(root, {
+maxHistoryFiles })` passes Forage's per-source record ceiling through and
+returns a store with Forage's `prune`. `resolveLookoutSnapshot()` replays one exact
 reference through an injected store or Lookout snapshot root, authenticates its
 body and replay metadata, and never fetches. References emitted before Forage's
 replay-envelope digest remain resolvable with `integrity: "body-and-identity"`;
@@ -366,6 +395,8 @@ import { createObserveExtractDiff } from "@kontourai/lookout";
 
 const composition = createObserveExtractDiff({
   acquisition: { check: runner.check },
+  // The store acquisition persists to; used to compare captures by reference.
+  snapshots: store,
   extraction: {
     async extract({ source, snapshotRef }) {
       // Resolve `snapshotRef`, prepare content, and invoke a caller-selected
@@ -390,8 +421,10 @@ const result = await composition.observe(source);
 
 `unchanged-304` and `unchanged-hash` are recorded as `unchanged` and never call
 the extraction capability, so they make zero preparation and provider calls,
-when the capture has the same URL and body hash as the recorder's
-`lastExtractedSnapshotRef`. That is the last snapshot an observation fully
+when the capture has the same URL, body hash, and text decoding as the
+recorder's `lastExtractedSnapshotRef`. Both references are resolved through
+`snapshots`; one that does not resolve (for example, pruned) counts as a
+different capture and is extracted. That is the last snapshot an observation fully
 handled: the current snapshot of a `completed`, `partial`, or `unchanged`
 observation, as `extractedSnapshotRef(observation)` returns. Otherwise the
 capture was persisted but never extracted (for example, a provider failed on the

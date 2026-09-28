@@ -44,6 +44,7 @@ function harness() {
     },
   };
   const observe = createObserveExtractDiff({
+    snapshots: store,
     acquisition: runner,
     extraction: {
       async extract({ snapshotRef }): Promise<ExtractionResult> {
@@ -126,7 +127,7 @@ test("a source whose first extraction failed is extracted on the next unchanged 
 test("a recorder that cannot report its last extracted snapshot fails the observation without extracting", async () => {
   let extracted = 0;
   const unchanged = { kind: "unchanged-304" as const, sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], snapshotRef: "snapshot-prior" };
-  const run = (lastExtractedSnapshotRef: () => Promise<unknown>) => createObserveExtractDiff({
+  const run = (lastExtractedSnapshotRef: () => Promise<unknown>) => createObserveExtractDiff({ snapshots: createInMemorySnapshotStore(),
     acquisition: { async check() { return unchanged; } },
     extraction: { async extract() { extracted += 1; throw new Error("not reached"); } },
     recorder: {
