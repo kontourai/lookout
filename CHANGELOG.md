@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/kontourai/lookout/compare/v0.5.2...v0.6.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* ObserveExtractRecorder implementations must add lastExtractedSnapshotRef. A byte-identical unchanged-hash check no longer writes a snapshot, and its currentSnapshotRef equals priorSnapshotRef.
+* new observation records are `version: 2`. `loadLatest` and `commit` now return `StoredProposalObservation`, which is `StoredProposalObservationV1 | StoredProposalObservationV2`. A version 1 record written under a different locale can still read as `corrupt-state` until it is rewritten. The next commit replaces a version 1 prior with a version 2 record.
+
+### Fixes
+
+* make observation ids independent of the host locale ([#84](https://github.com/kontourai/lookout/issues/84)) ([859824e](https://github.com/kontourai/lookout/commit/859824e54a081b6b8ccb1db76b2d15bad89b0305))
+* retry unextracted changes; stop appending repeat captures ([#88](https://github.com/kontourai/lookout/issues/88)) ([6b894ad](https://github.com/kontourai/lookout/commit/6b894ad48047035322b44434c04681a1c5feed2a))
+
 ## [0.5.2](https://github.com/kontourai/lookout/compare/v0.5.1...v0.5.2) (2026-08-26)
 
 
