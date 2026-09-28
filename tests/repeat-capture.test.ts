@@ -74,7 +74,7 @@ test("a changed body or a changed validator is still appended", async () => {
   });
 });
 
-test("the Forage history ceiling is passed through the Lookout store", async () => {
+test("the Forage history ceiling is passed through, and a full history is a typed history-full error", async () => {
   await withRoot(async (root) => {
     const store = createLookoutSnapshotStore(root, { maxHistoryFiles: 2 });
     const page = { body: "first" };
@@ -86,6 +86,10 @@ test("the Forage history ceiling is passed through the Lookout store", async () 
     page.body = "third";
     const full = await runner.check(source());
     assert.equal(full.kind, "error");
-    if (full.kind === "error") assert.equal(full.error.kind, "persistence");
+    assert.equal(full.kind === "error" && full.origin, "lookout");
+    if (full.kind === "error") {
+      assert.equal(full.error.kind, "history-full");
+      assert.match(full.error.message, /maximum of 2 records; configure snapshot retention/);
+    }
   });
 });

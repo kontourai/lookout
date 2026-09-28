@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createFilesystemSnapshotStore } from "@kontourai/forage";
-import type { SnapshotStore } from "@kontourai/forage";
+import type { ExactSnapshotStore, PrunableSnapshotStore, SnapshotStore } from "@kontourai/forage";
 import {
   resolveSnapshotSourceRef,
   type SnapshotSourceRefResolution,
@@ -18,7 +18,7 @@ export interface LookoutSnapshotStoreOptions {
 export function createLookoutSnapshotStore(
   root = path.join(process.cwd(), ".kontourai", "lookout", "snapshots"),
   options: LookoutSnapshotStoreOptions = {},
-): SnapshotStore {
+): ExactSnapshotStore & PrunableSnapshotStore {
   return createFilesystemSnapshotStore({
     root,
     ...(options.maxHistoryFiles === undefined ? {} : { maxHistoryFiles: options.maxHistoryFiles }),

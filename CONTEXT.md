@@ -56,12 +56,15 @@ results rather than throwing.
   - **`error`**: an operational failure, contained so the runner never rejects —
     `origin: "forage"` preserving a Forage `FetchError` discriminant, or
     `origin: "lookout"` with a typed kind (`prior-read` | `persistence` |
-    `dependency-contract` | `unexpected`).
+    `history-full` | `dependency-contract` | `unexpected`).
 - **Snapshot Store** (`createLookoutSnapshotStore`): a thin wrapper over
   Forage's filesystem snapshot store, rooted by default at
   `<cwd>/.kontourai/lookout/snapshots` with an injectable root and an optional
-  `maxHistoryFiles` passed to Forage. Lookout adds no custom filenames,
-  retention, or storage policy. `resolveLookoutSnapshot`
+  `maxHistoryFiles` passed to Forage. Lookout adds no custom filenames or
+  storage format. Optional check-runner **retention** (`keepLast` plus a
+  caller-supplied `cited` set) prunes through Forage's `prune` after each
+  stored capture and never removes the latest, the result's prior, or a cited
+  snapshot. `resolveLookoutSnapshot`
   resolves and authenticates one exact durable reference offline through this
   store boundary.
 - **Provider Resolver** (`ProviderResolver`): a Datum `resolve` capability

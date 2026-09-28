@@ -6,7 +6,9 @@ import type {
   PreparedArtifact,
 } from "@kontourai/traverse";
 import { validatePreparedArtifact } from "@kontourai/traverse";
-import { parseSnapshotSourceRef } from "@kontourai/forage/fetch";
+import { resolveSnapshotSourceRef } from "@kontourai/forage/fetch";
+import type { SnapshotStore } from "@kontourai/forage/fetch";
+import { captureDecoding } from "./capture-decoding.js";
 import type { CheckResult } from "./check-result.js";
 import type { ProposalSetObservation } from "./proposal-diff.js";
 import type { LookoutSource } from "./registry.js";
@@ -95,8 +97,8 @@ export interface ObserveExtractRecorder {
    * for which `extractedSnapshotRef(observation)` is not null, or `null` when
    * there is none.
    *
-   * An unchanged check is only skipped when its capture has the same URL and
-   * body hash as this snapshot. Otherwise a change that acquisition already
+   * An unchanged check is only skipped when its capture has the same URL, body
+   * hash, and text decoding as this snapshot. Otherwise a change that acquisition already
    * persisted, but that was never extracted (for example because a provider
    * failed), would be reported as unchanged forever.
    */
@@ -117,6 +119,14 @@ export interface ObserveExtractDiffOptions {
   readonly acquisition: ObserveExtractAcquisition;
   readonly extraction: ObserveExtractExtraction;
   readonly recorder: ObserveExtractRecorder;
+  /**
+   * The snapshot store acquisition persists to. An unchanged check is compared
+   * with the last extracted capture by resolving both references here, since a
+   * reference does not name the charset its text was decoded with. A reference
+   * that does not resolve counts as a different capture, so it is extracted.
+   * With snapshot retention, cite the last extracted reference to keep it.
+   */
+  readonly snapshots: SnapshotStore;
 }
 
 export type ObserveExtractErrorKind = "acquisition-threw" | "recording-failed" | "dependency-contract";
@@ -169,7 +179,7 @@ export function createObserveExtractDiff(options: ObserveExtractDiffOptions): Ob
         if (extracted !== null && (typeof extracted !== "string" || extracted === "")) {
           return { ok: false, error: error("dependency-contract", "Observation recorder returned an invalid last extracted snapshot reference") };
         }
-        if (extracted !== null && sameCapture(extracted, sourceSnapshot.currentSnapshotRef)) {
+        if (extracted !== null && await sameCapture(options.snapshots, extracted, sourceSnapshot.currentSnapshotRef)) {
           return record(options.recorder, baseObservation(source, check, "unchanged", sourceSnapshot, null, null, null));
         }
         sourceSnapshot = { priorSnapshotRef: extracted, currentSnapshotRef: sourceSnapshot.currentSnapshotRef };
@@ -275,13 +285,17 @@ function observationSource(source: LookoutSource): ObserveExtractSource {
   return { id: source.id, url: source.url, kind: source.kind };
 }
 
-/** Two references name the same capture content: same source, resource URL, and body hash. */
-function sameCapture(left: string, right: string): boolean {
+/**
+ * Two references name the same capture content: same source, resource URL,
+ * body hash, and text decoding. Same bytes under another declared charset are
+ * other text, so they are a different capture.
+ */
+async function sameCapture(store: SnapshotStore, left: string, right: string): Promise<boolean> {
   if (left === right) return true;
-  const a = parseSnapshotSourceRef(left);
-  const b = parseSnapshotSourceRef(right);
-  return a !== undefined && b !== undefined &&
-    a.sourceId === b.sourceId && a.url === b.url && a.bodyHash === b.bodyHash;
+  const [a, b] = await Promise.all([resolveSnapshotSourceRef(store, left), resolveSnapshotSourceRef(store, right)]);
+  if (!a.ok || !b.ok) return false;
+  return a.snapshot.sourceId === b.snapshot.sourceId && a.snapshot.url === b.snapshot.url &&
+    a.snapshot.bodyHash === b.snapshot.bodyHash && captureDecoding(a.snapshot) === captureDecoding(b.snapshot);
 }
 
 function snapshotFor(check: Exclude<CheckResult, { kind: "error" }>): ObserveExtractSourceSnapshot {

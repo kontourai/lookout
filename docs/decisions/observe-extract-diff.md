@@ -13,13 +13,16 @@ evidence:
     ref: src/observe-extract-diff.ts
   - kind: issue
     ref: https://github.com/kontourai/lookout/issues/86
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/89
 ---
 # Observe-extract-diff composition and typed extraction outcomes
 
 ## Decision
 
 `createObserveExtractDiff` is an additive composition entrypoint. It accepts
-three injected capabilities: acquisition, extraction, and observation recording.
+three injected capabilities (acquisition, extraction, and observation recording)
+and the snapshot store acquisition persists to.
 Lookout supplies none of their implementations. In particular, it does not
 resolve a source snapshot, prepare content, select a provider, or persist an
 external caller's observation format.
@@ -27,8 +30,11 @@ external caller's observation format.
 The composition calls acquisition first. A typed acquisition error is recorded
 as an `acquisition-error` observation. `unchanged-304` and `unchanged-hash`
 each record an `unchanged` observation and make zero extraction calls when the
-capture has the same URL and body hash as the recorder's
-`lastExtractedSnapshotRef`. This means unchanged sources make zero preparation
+capture has the same URL, body hash, and text decoding as the recorder's
+`lastExtractedSnapshotRef`. A reference does not name the charset its text was
+decoded with, so the composition takes the snapshot store acquisition persists
+to (`snapshots`) and resolves both references; an unresolvable one counts as a
+different capture and is extracted. This means unchanged sources make zero preparation
 and provider calls: the only code that could do either is behind the extraction
 capability, which is not invoked.
 
