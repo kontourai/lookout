@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/kontourai/lookout/compare/v0.6.0...v0.7.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* `createObserveExtractDiff` requires a `snapshots` store (the store acquisition persists to); it resolves both references to compare their decoding. With Forage 1.0.0, new text captures hash their bytes and carry a new snapshot-reference envelope. A text page whose bytes are not plain UTF-8 (a non-UTF-8 charset, a byte-order mark, or invalid UTF-8) reports `changed` once on its first check after upgrading, and is extracted again. `LookoutErrorKind` gains `history-full`.
+
+### Features
+
+* bound snapshot history with Forage retention; treat a charset change as a new capture ([#92](https://github.com/kontourai/lookout/issues/92)) ([662093c](https://github.com/kontourai/lookout/commit/662093c9f286b2dc8e0f2abb7cdc3df87a94cfe4))
+
 ## [0.6.0](https://github.com/kontourai/lookout/compare/v0.5.2...v0.6.0) (2026-09-28)
 
 
