@@ -196,6 +196,8 @@ snapshots, the latest, the prior capture its result names, and every reference
 `cited(sourceId)` returns. Cite what your observations, review rounds, and
 exported receipts still reference. If `cited` throws or returns anything but
 snapshot references, nothing is pruned and the result carries a warning.
+`cited` is read just before each prune, outside the store's lock, so record a
+citation before handing its reference out.
 
 ```ts
 const runner = createCheckRunner({
@@ -203,6 +205,13 @@ const runner = createCheckRunner({
   retention: { keepLast: 20, cited: (sourceId) => loadCitedSnapshotRefs(sourceId) },
 });
 ```
+
+**Upgrading to 0.7 (Forage 1.0).** New text captures hash their exact bytes.
+A text page whose bytes are not plain UTF-8 (a non-UTF-8 charset, a byte-order
+mark, or invalid UTF-8) therefore reports `changed` once, on its first check
+after the upgrade, and is extracted again. Drift comes from proposal diffs, so
+a page whose extracted content is identical emits nothing. Plain UTF-8 pages
+keep their stored capture.
 
 `error` results preserve provenance: `origin: "forage"` carries Forage's
 discriminated `FetchError` verbatim (its `kind`, and `status` when present);

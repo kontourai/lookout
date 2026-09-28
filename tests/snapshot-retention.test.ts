@@ -165,3 +165,28 @@ test("invalid retention is refused when the runner is created", () => {
     assert.throws(() => createCheckRunner({ store, retention: { keepLast, cited: () => [] } }), TypeError);
   }
 });
+
+test("a capture older than the stored head survives its own prune and stays resolvable", async () => {
+  await withRoot(async (root) => {
+    const store = createLookoutSnapshotStore(root);
+    const page = { body: "later head" };
+    const clockAt = { value: "2026-09-02T00:00:00.000Z" };
+    const runner = createCheckRunner({
+      store,
+      retention: { keepLast: 1, cited: () => [] },
+      fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0, minDelayMs: 0 }, {
+        ...options,
+        clock: () => clockAt.value,
+        fetch: async () => new Response(page.body, { status: 200 }),
+      }),
+    });
+    currentRef(await runner.check(source()));
+    // Clock skew, or another check that stored a later capture first.
+    clockAt.value = "2026-09-01T00:00:00.000Z";
+    page.body = "earlier capture";
+    const earlier = currentRef(await runner.check(source()));
+    const replay = await resolveSnapshotSourceRef(store, earlier);
+    assert.equal(replay.ok, true);
+    if (replay.ok) assert.equal(replay.snapshot.body, "earlier capture");
+  });
+});

@@ -144,6 +144,11 @@ export interface ObserveExtractDiff {
 }
 
 export function createObserveExtractDiff(options: ObserveExtractDiffOptions): ObserveExtractDiff {
+  // Without a store every unchanged capture would silently count as new and be
+  // extracted again, so a missing one is refused up front.
+  if (typeof options?.snapshots?.findExact !== "function") {
+    throw new TypeError("createObserveExtractDiff requires snapshots: the snapshot store acquisition persists to, with exact lookup");
+  }
   return {
     async observe(source): Promise<ObserveExtractResult> {
       try {

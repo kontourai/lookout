@@ -226,3 +226,9 @@ test("free-form extraction warnings cannot cross the durable recording boundary"
   assert.equal(JSON.stringify(result).includes("secret-value"), false);
   assert.equal(result.ok && result.value.attempt !== null && "warnings" in result.value.attempt, false);
 });
+
+test("a composition without a snapshot store is refused when created", () => {
+  const options = { acquisition: { async check() { throw new Error("not reached"); } }, extraction: { async extract() { throw new Error("not reached"); } }, recorder: recorder() };
+  assert.throws(() => createObserveExtractDiff(options as unknown as Parameters<typeof createObserveExtractDiff>[0]), /requires snapshots/);
+  assert.throws(() => createObserveExtractDiff({ ...options, snapshots: {} } as unknown as Parameters<typeof createObserveExtractDiff>[0]), /requires snapshots/);
+});

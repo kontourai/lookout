@@ -36,8 +36,10 @@ const GUARDED_EGRESS: EgressPolicy = { guarded: true };
 /**
  * Bounds each source's snapshot history with the store's `prune` capability.
  * After every stored capture, all but the newest `keepLast` snapshots are
- * removed, except the latest, the capture the result names as prior, and
- * every snapshot `cited` returns.
+ * removed, except the latest, the captures the result names, and every
+ * snapshot `cited` returns. `cited` is read just before the prune, outside the
+ * store's lock: a citation recorded after that read is not protected by that
+ * prune, so record a citation before handing its reference out.
  */
 export interface SnapshotRetention {
   /** Newest snapshots kept per source (a non-negative integer; the latest is always kept). */
@@ -166,7 +168,9 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
         return { ...base, kind: "unchanged-hash", priorSnapshotRef, currentSnapshotRef: priorSnapshotRef };
       }
 
-      const keepAlso = prior === undefined ? [] : [prior];
+      // The capture just stored is kept even when it is not the newest (clock
+      // skew, or another check storing a later capture first): its result names it.
+      const keepAlso = prior === undefined ? [snapshot] : [snapshot, prior];
       try {
         await options.store.put(snapshot);
       } catch (error) {
