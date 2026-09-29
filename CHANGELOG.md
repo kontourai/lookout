@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/kontourai/lookout/compare/v0.8.2...v0.8.3) (2026-09-29)
+
+
+### Fixes
+
+* never report a moved field an incomplete prior read as newly observed ([#101](https://github.com/kontourai/lookout/issues/101)) ([3a54e7d](https://github.com/kontourai/lookout/commit/3a54e7dcb2877891123e0309f904644165c8f505))
+
 ## [0.8.2](https://github.com/kontourai/lookout/compare/v0.8.1...v0.8.2) (2026-09-29)
 
 
