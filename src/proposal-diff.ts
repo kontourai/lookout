@@ -325,18 +325,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
     });
     if (!occurrences.ok) return occurrences;
     retainedProposalOccurrences.push(...occurrences.value.retained);
-    (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(...occurrences.value.additions);
     (currentIncomplete ? unobservedProposalOccurrences : removedProposalOccurrences).push(...occurrences.value.removals);
-    for (const proposal of occurrences.value.additions) {
-      const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.current, proposal));
-      if (!fieldKey.ok) return fieldKey;
-      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKey, fieldKey.value, proposal));
-    }
-    for (const proposal of occurrences.value.removals) {
-      const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.prior, proposal));
-      if (!fieldKey.ok) return fieldKey;
-      (currentIncomplete ? unobservedProposalEvidence : removedProposalEvidence).push(evidence(input.prior, entityKey, fieldKey.value, proposal));
-    }
 
     const priorFields = semanticFieldOrder(priorProposals.value.map((proposal) => ({ entity: pair.prior, proposal })), ({ entity, proposal }) => input.fieldIdentity(entity, proposal));
     if (!priorFields.ok) return priorFields;
@@ -346,6 +335,24 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       identity: ({ entity, proposal }) => input.fieldIdentity(entity, proposal),
     });
     if (!fields.ok) return fields;
+    // An occurrence whose field the prior did read (moved, re-worded or
+    // re-valued) is an added occurrence even against an incomplete prior: the
+    // field-level facts and events already describe it, so calling it newly
+    // observed would count the same field twice.
+    const priorReadField = new Set(fields.value.retained.map((field) => field.current.proposal));
+    for (const proposal of occurrences.value.additions) {
+      const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.current, proposal));
+      if (!fieldKey.ok) return fieldKey;
+      const newlyObserved = priorIncomplete && !priorReadField.has(proposal);
+      (newlyObserved ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(proposal);
+      (newlyObserved ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKey, fieldKey.value, proposal));
+    }
+    for (const proposal of occurrences.value.removals) {
+      const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.prior, proposal));
+      if (!fieldKey.ok) return fieldKey;
+      (currentIncomplete ? unobservedProposalEvidence : removedProposalEvidence).push(evidence(input.prior, entityKey, fieldKey.value, proposal));
+    }
+
     for (const field of fields.value.retained) {
       const fieldKeyResult = identity("fieldIdentity", () => input.fieldIdentity(field.prior.entity, field.prior.proposal));
       if (!fieldKeyResult.ok) return fieldKeyResult;
