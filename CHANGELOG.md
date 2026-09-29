@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/kontourai/lookout/compare/v0.8.1...v0.8.2) (2026-09-29)
+
+
+### Fixes
+
+* **deps:** bump @kontourai/traverse to 3.0.1 and @kontourai/survey to 8.0.0 ([#99](https://github.com/kontourai/lookout/issues/99)) ([2c7509e](https://github.com/kontourai/lookout/commit/2c7509ef5492b706f826d9511244faf9942c71d5))
+
 ## [0.8.1](https://github.com/kontourai/lookout/compare/v0.8.0...v0.8.1) (2026-09-29)
 
 
