@@ -1,4 +1,5 @@
 import type {
+  ExtractionCoverageEntry,
   ExtractionPartial,
   ExtractionProposal,
   ExtractionProviderFailure,
@@ -10,7 +11,7 @@ import { resolveSnapshotSourceRef } from "@kontourai/forage/fetch";
 import type { SnapshotStore } from "@kontourai/forage/fetch";
 import { captureDecoding } from "./capture-decoding.js";
 import type { CheckResult } from "./check-result.js";
-import type { ProposalSetObservation } from "./proposal-diff.js";
+import type { ProposalSetIncompleteness, ProposalSetObservation } from "./proposal-diff.js";
 import type { LookoutSource } from "./registry.js";
 
 /** Acquisition is supplied by the caller; Lookout does not add another fetcher. */
@@ -37,6 +38,8 @@ export interface ObserveExtractAttempt {
   readonly providerCalls: number;
   readonly totalTokensUsed: number;
   readonly partial?: ExtractionPartial;
+  /** Traverse's per-chunk record of which prepared text was read and answered. */
+  readonly coverage?: readonly ExtractionCoverageEntry[];
   readonly providerFailures?: readonly ObserveExtractProviderFailure[];
 }
 
@@ -210,13 +213,15 @@ export function createObserveExtractDiff(options: ObserveExtractDiffOptions): Ob
       }
 
       const attempt = attemptFor(extraction);
+      const outcome = outcomeFor(extraction);
+      const incomplete = incompletenessFor(extraction, outcome);
       const proposalSet: ProposalSetObservation = {
         sourceId: source.id,
         snapshotRef: sourceSnapshot.currentSnapshotRef,
         observedAt: extraction.extractedAt,
         proposals: extraction.proposals,
+        ...(incomplete === null ? {} : { incomplete }),
       };
-      const outcome = outcomeFor(extraction);
       if (outcome !== "extraction-failure") {
         if (extraction.preparedArtifact === undefined) {
           return { ok: false, error: error("dependency-contract", "Extraction result is missing its prepared artifact") };
@@ -314,9 +319,22 @@ function attemptFor(result: ExtractionResult): ObserveExtractAttempt {
     providerCalls: result.providerCalls,
     totalTokensUsed: result.totalTokensUsed,
     ...(result.partial === undefined ? {} : { partial: result.partial }),
+    ...(result.coverage === undefined ? {} : { coverage: result.coverage }),
     ...(result.providerFailures === undefined ? {} : {
       providerFailures: result.providerFailures.map(({ kind, retryable }) => ({ kind, retryable })),
     }),
+  };
+}
+
+/**
+ * Every outcome other than `completed` read less than all of its text, or
+ * failed, so its proposal set must not be diffed as if it were whole.
+ */
+function incompletenessFor(result: ExtractionResult, outcome: ObserveExtractOutcome): ProposalSetIncompleteness | null {
+  if (outcome === "completed") return null;
+  return {
+    reason: result.partial?.reason ?? (result.providerFailures?.length ? "provider-failure" : "extraction-error"),
+    ...(result.coverage === undefined ? {} : { coverage: result.coverage }),
   };
 }
 

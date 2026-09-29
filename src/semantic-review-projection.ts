@@ -39,7 +39,8 @@ export function collectSemanticChanges(input: { prior: ProposalSetObservation; c
     const kind = incomplete(change.current) && !incomplete(change.prior) ? "provenance-gap" : change.prior.provenance.locator !== change.current.provenance.locator ? "proposal-moved" : "proposal-provenance-changed";
     changes.push({ kind, fieldPath: change.current.fieldPath, entityKey: change.entityKey, prior: change.prior, current: change.current });
   }
-  if (input.schema) {
+  // A declared field missing from text that was never read is unknown, not a gap.
+  if (input.schema && input.current.incomplete === undefined) {
     const priorGaps = new Set(checkSchemaCoverage(input.schema, input.prior.proposals).gaps.map((gap) => gap.fieldPath));
     for (const gap of checkSchemaCoverage(input.schema, input.current.proposals).gaps) if (!priorGaps.has(gap.fieldPath)) changes.push({ kind: "coverage-gap", fieldPath: gap.fieldPath, entityKey: gap.fieldPath, gap });
   }
@@ -47,7 +48,7 @@ export function collectSemanticChanges(input: { prior: ProposalSetObservation; c
 }
 function candidate(id: string, role: SemanticReviewCandidate["role"], observationId: string, evidence: ProposalEvidence | undefined, fallback: ProposalSetObservation, target: SemanticClaimTarget, fieldPath: string): SemanticReviewCandidate {
   const present = evidence !== undefined;
-  return { id: `${id}.${role}`, role, value: present ? evidence.value : null, ...(present ? { confidence: evidence.confidence } : {}), source: { sourceRef: evidence?.snapshotRef ?? fallback.snapshotRef, sourceId: evidence?.sourceId ?? fallback.sourceId, observedAt: evidence?.observedAt ?? fallback.observedAt, locatorScheme: "text-span" }, ...(present && !incomplete(evidence) ? { locator: { scheme: "text-span", locator: evidence.provenance.locator, excerpt: evidence.provenance.excerpt } } : {}), extraction: { extractionId: `${id}.${role}.extraction`, target: fieldPath, ...(present ? { confidence: evidence.confidence, extractor: evidence.extractor } : {}), extractedAt: evidence?.observedAt ?? fallback.observedAt }, claimTarget: target, producer: { "lookout.kontourai.io/semantic-transition": { observationId, evidenceState: present ? "present" : "absent" } } };
+  return { id: `${id}.${role}`, role, value: present ? evidence.value : null, ...(evidence?.confidence === undefined ? {} : { confidence: evidence.confidence }), source: { sourceRef: evidence?.snapshotRef ?? fallback.snapshotRef, sourceId: evidence?.sourceId ?? fallback.sourceId, observedAt: evidence?.observedAt ?? fallback.observedAt, locatorScheme: "text-span" }, ...(present && !incomplete(evidence) ? { locator: { scheme: "text-span", locator: evidence.provenance.locator, excerpt: evidence.provenance.excerpt } } : {}), extraction: { extractionId: `${id}.${role}.extraction`, target: fieldPath, ...(present ? { ...(evidence.confidence === undefined ? {} : { confidence: evidence.confidence }), extractor: evidence.extractor } : {}), extractedAt: evidence?.observedAt ?? fallback.observedAt }, claimTarget: target, producer: { "lookout.kontourai.io/semantic-transition": { observationId, evidenceState: present ? "present" : "absent" } } };
 }
 
 export function projectReviewItem(change: SemanticReviewChange, occurrence: number, transitionId: string, identities: SemanticObservationIdentity, prior: ProposalSetObservation, current: ProposalSetObservation, target: SemanticClaimTarget): DiffResult<SemanticReviewItem> {

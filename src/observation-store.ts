@@ -256,7 +256,10 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
 function validProposal(value: unknown): value is ExtractionProposal {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
-  if (typeof item.fieldPath !== "string" || item.fieldPath === "" || typeof item.confidence !== "number" || !Number.isFinite(item.confidence) || typeof item.extractor !== "string" || item.extractor === "") return false;
+  if (typeof item.fieldPath !== "string" || item.fieldPath === "" || typeof item.extractor !== "string" || item.extractor === "") return false;
+  // Confidence is optional; when present it must be a real score. Absence is
+  // kept as absence and never replaced by a default.
+  if (item.confidence !== undefined && (typeof item.confidence !== "number" || !Number.isFinite(item.confidence))) return false;
   if (item.pathIndices !== undefined && (!Array.isArray(item.pathIndices) || item.pathIndices.some((part) => !Number.isSafeInteger(part) || (part as number) < 0))) return false;
   if (!item.provenance || typeof item.provenance !== "object" || Array.isArray(item.provenance)) return false;
   const provenance = item.provenance as Record<string, unknown>;

@@ -79,7 +79,10 @@ results rather than throwing.
 - **Drift emission** (`DriftEmitter`): compares a genuine stored prior with a
   current caller-produced proposal observation and emits one neutral
   `DriftFact`/`ProposalDiffEvent` set per comparison — `events`, `facts`, and a
-  `priorObservationId` (`null` on the first-ever observation). Registry kind
+  `priorObservationId` (`null` on the first-ever observation). When the current
+  proposal set is marked `incomplete` (its extraction did not read all of its
+  text), nothing the prior had is reported as removed: those proposals and
+  entities are `unobserved`, and the fact carries the `incomplete` marker. Registry kind
   supplies fact `origin`; resolution is always `observation`. First observation
   produces a `baseline-established` fact, no events, and a null
   `priorObservationId`.

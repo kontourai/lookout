@@ -1,5 +1,5 @@
 import type { LookoutSource } from "./registry.js";
-import { diffProposalSets, type ProposalDiffEvent, type ProposalSetDiff, type ProposalSetDiffInput, type ProposalSetFacts, type ProposalSetObservation } from "./proposal-diff.js";
+import { diffProposalSets, type ProposalDiffEvent, type ProposalSetDiff, type ProposalSetDiffInput, type ProposalSetFacts, type ProposalSetIncompleteness, type ProposalSetObservation } from "./proposal-diff.js";
 import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservation } from "./observation-store.js";
 import type { SnapshotStore } from "@kontourai/forage";
 import { compareCodeUnits } from "./canonical-json.js";
@@ -24,6 +24,8 @@ export interface BaselineEstablishedFact {
   readonly origin: LookoutSource["kind"];
   readonly resolution: "observation";
   readonly proposalCount: number;
+  /** Present when this baseline's extraction did not read all of its text. */
+  readonly incomplete?: ProposalSetIncompleteness;
 }
 export type DriftFact =
   | BaselineEstablishedFact
@@ -34,6 +36,8 @@ export type DriftFact =
       readonly origin: LookoutSource["kind"];
       readonly resolution: "observation";
       readonly value: ProposalSetFacts;
+      /** Present when the current extraction did not read all of its text; nothing the prior had is then reported as removed. */
+      readonly incomplete?: ProposalSetIncompleteness;
     };
 export interface DriftSuccess {
   readonly sourceId: string;
@@ -86,6 +90,10 @@ function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
       removedEntities: [...value.facts.removedEntities].sort(),
       addedProposalEvidence: sorted(value.facts.addedProposalEvidence ?? []),
       removedProposalEvidence: sorted(value.facts.removedProposalEvidence ?? []),
+      confidenceChanges: sorted(value.facts.confidenceChanges ?? []),
+      ...(value.facts.unobservedProposalOccurrences === undefined ? {} : { unobservedProposalOccurrences: sorted(value.facts.unobservedProposalOccurrences) }),
+      ...(value.facts.unobservedProposalEvidence === undefined ? {} : { unobservedProposalEvidence: sorted(value.facts.unobservedProposalEvidence) }),
+      ...(value.facts.unobservedEntities === undefined ? {} : { unobservedEntities: [...value.facts.unobservedEntities].sort() }),
     },
   };
 }
@@ -120,7 +128,7 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
         let facts: readonly DriftFact[];
 
         if (prior === null) {
-          facts = [{ kind: "baseline-established", sourceId: invocation.source.id, snapshotRef: invocation.current.snapshotRef, observedAt: invocation.current.observedAt, origin: invocation.source.kind, resolution: "observation", proposalCount: invocation.current.proposals.length }];
+          facts = [{ kind: "baseline-established", sourceId: invocation.source.id, snapshotRef: invocation.current.snapshotRef, observedAt: invocation.current.observedAt, origin: invocation.source.kind, resolution: "observation", proposalCount: invocation.current.proposals.length, ...incompleteness(invocation.current) }];
         } else {
           let derived;
           try {
@@ -133,7 +141,7 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           if (!derived.ok) return { ok: false, error: { kind: "diff-error", message: derived.error.message, cause: derived.error } };
           const normalized = normalizeDiff(derived.value);
           events = normalized.events;
-          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts }];
+          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts, ...incompleteness(invocation.current) }];
         }
 
         try {
@@ -152,6 +160,9 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
   };
 }
 
+function incompleteness(observation: ProposalSetObservation): { readonly incomplete?: ProposalSetIncompleteness } {
+  return observation.incomplete === undefined ? {} : { incomplete: observation.incomplete };
+}
 function capture<T>(value: T): T | null { try { return structuredClone(value); } catch { return null; } }
 function captureInvocation<E>(input: EmitDriftInput<E>): EmitDriftInput<E> | null {
   try {

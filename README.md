@@ -438,6 +438,16 @@ outcomes. Provider failures are reduced to provider-neutral `kind` and
 `retryable` classifications; provider names, messages, native diagnostics,
 free-form extraction warnings, raw responses, and thrown-error text are not
 copied into the durable observation.
+Traverse's per-chunk `coverage` is kept on the attempt. Every outcome other
+than `completed` also marks its proposal set `incomplete` (Traverse's partial
+reason, or `extraction-error`, plus coverage). When that proposal set is
+diffed or passed to `createDriftEmitter`, a proposal the prior had that the
+incomplete run lacks may sit in text that was never read, so it is reported
+under `unobserved*` facts, never as a removal, and drift facts carry the same
+`incomplete` marker. A proposal's `confidence` is optional: when absent it stays
+absent in stored observations, diff evidence, and review candidates, and a
+retained field whose confidence changed, appeared, or disappeared is listed in
+`confidenceChanges`.
 A first changed observation
 has `priorObservationId: null`; it is a baseline observation, not a fabricated
 list of additions or removals.
