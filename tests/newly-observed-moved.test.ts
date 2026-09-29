@@ -54,6 +54,16 @@ describe("an incomplete prior that read a field that later moved", () => {
     assert.deepEqual(result.value.facts.addedProposalOccurrences, [moved.proposals[0]]);
   });
 
+  test("against a complete prior a new field stays an added occurrence", () => {
+    const complete = observation("snapshot-1", prior.proposals);
+    const current = observation("snapshot-2", [at("status", "Active", 0), at("owner", "Example", 50)]);
+    const result = diffProposalSets({ prior: complete, current, ...callbacks });
+    assert.equal(result.ok, true); if (!result.ok) return;
+    assert.deepEqual(result.value.facts.addedProposalOccurrences, [current.proposals[1]]);
+    assert.deepEqual(result.value.facts.addedProposalEvidence?.map((item) => item.fieldPath), ["owner"]);
+    assert.equal(result.value.facts.newlyObservedProposalEvidence, undefined);
+  });
+
   test("a value the prior never read is still one newly observed item", () => {
     const current = observation("snapshot-2", [at("status", "Active", 0), at("owner", "Example", 50)]);
     assert.deepEqual(items(project(prior, current)), [{ kind: "proposal-newly-observed", target: "owner" }]);
