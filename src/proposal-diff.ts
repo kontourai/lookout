@@ -1,4 +1,4 @@
-import type { ExtractionCoverageEntry, ExtractionPartialReason, ExtractionProposal } from "@kontourai/traverse";
+import type { ExtractionCoverageEntry, ExtractionPartialReason, ExtractionProposal, PreparedArtifact } from "@kontourai/traverse";
 import {
   canonicalValueKey,
   type DiffKernelError,
@@ -7,6 +7,7 @@ import {
 } from "./canonical-value.js";
 import { compareStructural, diffKeyedMultiset } from "./structural-diff.js";
 import { compareCodeUnits } from "./canonical-json.js";
+import { anchorInPriorText, type PriorTextAnchor } from "./prior-text-anchor.js";
 
 declare const proposalIdentityBrand: unique symbol;
 export type ProposalIdentity = string & { readonly [proposalIdentityBrand]: "ProposalIdentity" };
@@ -23,6 +24,12 @@ export interface ProposalSetObservation {
    * as removed.
    */
   readonly incomplete?: ProposalSetIncompleteness;
+  /**
+   * Traverse's identity for the prepared text behind `proposals`. A drift
+   * emitter needs the prior's to verify re-prepared text before anchoring
+   * entities against it.
+   */
+  readonly preparedArtifact?: PreparedArtifact;
 }
 
 /**
@@ -126,6 +133,12 @@ export interface ProposalSetFacts {
   /** Current entities missing from an incomplete prior observation. */
   readonly newlyObservedEntities?: readonly string[];
   /**
+   * Present when the diff was given the prior's full prepared text: where each
+   * newly observed entity's evidence sits in it. Entities whose evidence is
+   * absent from that text are additions and are not listed here.
+   */
+  readonly newlyObservedEntityAnchors?: readonly NewlyObservedEntityAnchor[];
+  /**
    * Prior proposal occurrences missing from an incomplete current observation.
    * Whether they were removed is unknown, so they are not in the removed facts.
    */
@@ -134,6 +147,11 @@ export interface ProposalSetFacts {
   readonly unobservedProposalEvidence?: readonly ProposalEvidence[];
   /** Prior entities missing from an incomplete current observation. */
   readonly unobservedEntities?: readonly string[];
+}
+
+export interface NewlyObservedEntityAnchor {
+  readonly entityKey: string;
+  readonly anchor: Exclude<PriorTextAnchor, "absent">;
 }
 
 export interface ProposalSetDiff {
@@ -148,6 +166,14 @@ export interface ProposalSetDiffInput<E> {
   readonly entityIdentity: (entity: E) => string | IdentityResult;
   readonly proposalsFor: (entity: E) => readonly ExtractionProposal[];
   readonly fieldIdentity: (entity: E, proposal: ExtractionProposal) => string | IdentityResult;
+  /**
+   * The incomplete prior's full prepared text, verified against its prepared
+   * artifact and prepared the same way as the current text. With it, a current
+   * entity none of whose exact excerpts occur anywhere in that text is reported
+   * as added and raises `new-entity-appeared`; any other is newly observed.
+   * Ignored when the prior is complete.
+   */
+  readonly priorPreparedText?: string;
 }
 
 function callbackError(label: string, cause: unknown): DiffKernelError {
@@ -282,6 +308,8 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
   const newlyObservedProposalOccurrences: ExtractionProposal[] = [];
   const newlyObservedProposalEvidence: ProposalEvidence[] = [];
   const newlyObservedEntities: string[] = [];
+  const newlyObservedEntityAnchors: NewlyObservedEntityAnchor[] = [];
+  const priorText = priorIncomplete ? input.priorPreparedText : undefined;
 
   for (const pair of entities.value.retained) {
     const entityKeyResult = identity("entityIdentity", () => input.entityIdentity(pair.prior));
@@ -372,16 +400,23 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
     if (!entityKeyResult.ok) return entityKeyResult;
     const proposals = invoke("proposalsFor", () => input.proposalsFor(entity));
     if (!proposals.ok) return proposals;
+    // Against an incomplete prior an entity is only added when its text was
+    // nowhere in the prior's capture; offsets cannot tell, since each capture
+    // has its own.
+    const anchor = priorText === undefined ? null : anchorInPriorText(proposals.value, priorText, input.prior.incomplete?.coverage ?? []);
+    const unseen = priorIncomplete && anchor !== "absent";
     const current: ProposalEvidence[] = [];
     for (const proposal of proposals.value) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(entity, proposal));
       if (!fieldKey.ok) return fieldKey;
       current.push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(proposal);
+      (unseen ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
+      (unseen ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(proposal);
     }
-    if (priorIncomplete) newlyObservedEntities.push(entityKeyResult.value);
-    else events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
+    if (unseen) {
+      newlyObservedEntities.push(entityKeyResult.value);
+      if (anchor !== null) newlyObservedEntityAnchors.push({ entityKey: entityKeyResult.value, anchor });
+    } else events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
   }
 
   for (const entity of entities.value.removals) {
@@ -405,6 +440,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       facts: {
         retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence, confidenceChanges,
         ...(priorIncomplete ? { newlyObservedProposalOccurrences, newlyObservedProposalEvidence, newlyObservedEntities } : {}),
+        ...(priorText === undefined ? {} : { newlyObservedEntityAnchors }),
         ...(currentIncomplete ? { unobservedProposalOccurrences, unobservedProposalEvidence, unobservedEntities } : {}),
       },
     },

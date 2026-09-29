@@ -1,7 +1,9 @@
 import type { LookoutSource } from "./registry.js";
 import { diffProposalSets, type ProposalDiffEvent, type ProposalSetDiff, type ProposalSetDiffInput, type ProposalSetFacts, type ProposalSetIncompleteness, type ProposalSetObservation } from "./proposal-diff.js";
 import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservation } from "./observation-store.js";
-import type { SnapshotStore } from "@kontourai/forage";
+import type { Snapshot, SnapshotStore } from "@kontourai/forage";
+import { resolvePreparedArtifact, type PreparedArtifact } from "@kontourai/traverse";
+import { resolveLookoutSnapshot } from "./snapshot-store.js";
 import { compareCodeUnits } from "./canonical-json.js";
 import { admitProposalObservation } from "./observation-admission.js";
 import { lossRecurs } from "./incompleteness.js";
@@ -39,9 +41,55 @@ export type DriftFact =
       readonly value: ProposalSetFacts;
       /** Present when the current extraction did not read all of its text; nothing the prior had is then reported as removed. */
       readonly incomplete?: ProposalSetIncompleteness;
-      /** Present when the prior baseline's extraction did not read all of its text; nothing the current run has is then reported as added. */
+      /**
+       * Present when the prior baseline's extraction did not read all of its
+       * text. What the current run has that the prior lacks is then newly
+       * observed, not added, unless `priorText` is `verified` and an entity's
+       * text occurs nowhere in the prior's capture.
+       */
       readonly priorIncomplete?: ProposalSetIncompleteness;
+      /** Present with `priorIncomplete`: whether the prior's prepared text could be rebuilt to anchor new entities against. */
+      readonly priorText?: PriorTextStatus;
     };
+
+/**
+ * Whether an incomplete prior's full prepared text was rebuilt and verified.
+ * When it was not, every entity the prior lacks stays newly observed and
+ * `reason` says why.
+ */
+export type PriorTextStatus =
+  | { readonly status: "verified" }
+  | { readonly status: "unavailable"; readonly reason: PriorTextUnavailableReason };
+export type PriorTextUnavailableReason =
+  /** The emitter was created without `priorText`. */
+  | "not-configured"
+  /** The prior or current observation carries no prepared artifact. */
+  | "no-prepared-artifact"
+  /** Prior and current text were prepared by a different mode or version, so excerpts are not comparable. */
+  | "preparation-changed"
+  /** The prior's text or capture is larger than `priorText.maxChars`. */
+  | "too-large"
+  /** The prior's snapshot no longer resolves in the snapshot store. */
+  | "snapshot-unresolved"
+  /** The caller's preparation threw or returned something other than text. */
+  | "preparation-failed"
+  /** The rebuilt text does not match the prior's prepared-artifact digest. */
+  | "text-mismatch";
+
+/**
+ * Rebuilds a stored capture's prepared text so new entities can be anchored
+ * against an incomplete prior. Lookout reads the prior's snapshot from the
+ * snapshot store; the caller prepares it exactly as its extraction did. No
+ * provider is called.
+ */
+export interface PriorTextPreparation {
+  prepare(input: { readonly snapshot: Snapshot; readonly preparedArtifact: PreparedArtifact }): string | Promise<string>;
+  /**
+   * Largest prior prepared text and snapshot body, in UTF-16 code units or
+   * bytes, that is read. Larger ones are `too-large`. Default 4,000,000.
+   */
+  readonly maxChars?: number;
+}
 export interface DriftSuccess {
   readonly sourceId: string;
   readonly events: readonly ProposalDiffEvent[];
@@ -81,6 +129,13 @@ export interface CreateDriftEmitterOptions<E> {
   readonly store: ObservationStore;
   /** Required explicit capability for authenticating durable snapshot references. */
   readonly snapshotStore: SnapshotStore;
+  /**
+   * Optional: rebuild an incomplete prior's prepared text so an entity whose
+   * text was nowhere in the prior's capture raises `new-entity-appeared`
+   * instead of staying newly observed. Without it, a page that stays capped
+   * never reports added entities after its first capped run.
+   */
+  readonly priorText?: PriorTextPreparation;
   readonly now?: () => string;
   readonly diff?: (input: ProposalSetDiffInput<E>) => { readonly ok: true; readonly value: ProposalSetDiff } | { readonly ok: false; readonly error: { readonly message: string } };
 }
@@ -106,6 +161,7 @@ function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
       ...(value.facts.newlyObservedProposalOccurrences === undefined ? {} : { newlyObservedProposalOccurrences: sorted(value.facts.newlyObservedProposalOccurrences) }),
       ...(value.facts.newlyObservedProposalEvidence === undefined ? {} : { newlyObservedProposalEvidence: sorted(value.facts.newlyObservedProposalEvidence) }),
       ...(value.facts.newlyObservedEntities === undefined ? {} : { newlyObservedEntities: [...value.facts.newlyObservedEntities].sort() }),
+      ...(value.facts.newlyObservedEntityAnchors === undefined ? {} : { newlyObservedEntityAnchors: sorted(value.facts.newlyObservedEntityAnchors) }),
       ...(value.facts.unobservedProposalOccurrences === undefined ? {} : { unobservedProposalOccurrences: sorted(value.facts.unobservedProposalOccurrences) }),
       ...(value.facts.unobservedProposalEvidence === undefined ? {} : { unobservedProposalEvidence: sorted(value.facts.unobservedProposalEvidence) }),
       ...(value.facts.unobservedEntities === undefined ? {} : { unobservedEntities: [...value.facts.unobservedEntities].sort() }),
@@ -146,17 +202,20 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           facts = [{ kind: "baseline-established", sourceId: invocation.source.id, snapshotRef: invocation.current.snapshotRef, observedAt: invocation.current.observedAt, origin: invocation.source.kind, resolution: "observation", proposalCount: invocation.current.proposals.length, ...incompleteness(invocation.current) }];
         } else {
           let derived;
+          let priorText: PriorTextStatus | undefined;
           try {
             // Diff callbacks receive their own clone, never the image used for
             // durable commit below.
-            derived = diff({ prior: { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, proposals: capture(prior.proposals) ?? [], ...incompleteness(prior) }, current: capture(invocation.current)!, ...invocation.callbacks });
+            const anchored = prior.incomplete === undefined ? null : await rebuildPriorText(prior, invocation.current, options);
+            priorText = anchored === null ? undefined : "text" in anchored ? { status: "verified" } : { status: "unavailable", reason: anchored.reason };
+            derived = diff({ prior: { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, proposals: capture(prior.proposals) ?? [], ...incompleteness(prior) }, current: capture(invocation.current)!, ...invocation.callbacks, ...(anchored !== null && "text" in anchored ? { priorPreparedText: anchored.text } : {}) });
           } catch (cause) {
             return { ok: false, error: { kind: "diff-error", message: "Proposal diff threw", cause } };
           }
           if (!derived.ok) return { ok: false, error: { kind: "diff-error", message: derived.error.message, cause: derived.error } };
           const normalized = normalizeDiff(derived.value);
           events = normalized.events;
-          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts, ...incompleteness(invocation.current), ...(prior.incomplete === undefined ? {} : { priorIncomplete: prior.incomplete }) }];
+          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts, ...incompleteness(invocation.current), ...(prior.incomplete === undefined ? {} : { priorIncomplete: prior.incomplete }), ...(priorText === undefined ? {} : { priorText }) }];
         }
 
         try {
@@ -180,6 +239,32 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
       }
     },
   };
+}
+
+const DEFAULT_PRIOR_TEXT_MAX_CHARS = 4_000_000;
+
+/**
+ * The incomplete prior's full prepared text, re-prepared from its snapshot and
+ * verified against its prepared-artifact digest, or why it is unavailable.
+ * Sizes are checked before the body is handed to preparation.
+ */
+async function rebuildPriorText<E>(prior: StoredProposalObservation, current: ProposalSetObservation, options: CreateDriftEmitterOptions<E>): Promise<{ readonly text: string } | { readonly reason: PriorTextUnavailableReason }> {
+  const preparation = options.priorText;
+  if (preparation === undefined) return { reason: "not-configured" };
+  const artifact = prior.preparedArtifact;
+  if (artifact === undefined || current.preparedArtifact === undefined) return { reason: "no-prepared-artifact" };
+  if (artifact.preparationMode !== current.preparedArtifact.preparationMode || artifact.preparationVersion !== current.preparedArtifact.preparationVersion) return { reason: "preparation-changed" };
+  const max = preparation.maxChars ?? DEFAULT_PRIOR_TEXT_MAX_CHARS;
+  if (artifact.contentLength > max) return { reason: "too-large" };
+  const resolved = await resolveLookoutSnapshot(prior.snapshotRef, { store: options.snapshotStore });
+  if (!resolved.ok) return { reason: "snapshot-unresolved" };
+  if (resolved.snapshot.body.length > max) return { reason: "too-large" };
+  let text: unknown;
+  try { text = await preparation.prepare({ snapshot: resolved.snapshot, preparedArtifact: structuredClone(artifact) }); }
+  catch { return { reason: "preparation-failed" }; }
+  if (typeof text !== "string") return { reason: "preparation-failed" };
+  const verified = await resolvePreparedArtifact(artifact, { get: () => text as string });
+  return verified.status === "available" ? { text: verified.text } : { reason: "text-mismatch" };
 }
 
 function incompleteness(observation: { readonly incomplete?: ProposalSetIncompleteness }): { readonly incomplete?: ProposalSetIncompleteness } {
