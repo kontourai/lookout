@@ -90,9 +90,11 @@ results rather than throwing.
   `priorText` preparation rebuilds and verifies the prior's full prepared text
   and none of the entity's exact excerpts occur in it (**Prior Text
   Anchoring**); the fact's `priorText` says whether that text was `verified` or
-  why it was `unavailable`. Newly observed proposals are reviewable as
-  `proposal-newly-observed` semantic review work. Registry kind
-  supplies fact `origin`; resolution is always `observation`. First observation
+  why it was `unavailable`. An occurrence paired with a field occurrence the
+  incomplete prior did read is never newly observed: if it moved or changed,
+  the provenance change or field-changed event describes it and the
+  occurrence is added. Newly observed proposals are reviewable as
+  `proposal-newly-observed` semantic review work. Registry kind supplies fact `origin`; resolution is always `observation`. First observation
   produces a `baseline-established` fact, no events, and a null
   `priorObservationId`.
 - **Observe-extract-diff composition** (`createObserveExtractDiff`): an

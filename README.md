@@ -549,8 +549,10 @@ const work = buildSemanticReviewWork({
 Added, removed, moved, provenance-changed, and value-changed proposals become distinct work items.
 A proposal an incomplete prior lacked (`newlyObserved*`) becomes
 `proposal-newly-observed` work: it may be new, or may have sat in text the
-prior never read. Pass `priorPreparedText` (the prior's verified full prepared
-text) to report an entity whose text is absent from it as added instead.
+prior never read. An occurrence of a field the prior did read, found by the
+current run at another offset, is one `proposal-moved` item, never also newly
+observed. Pass `priorPreparedText` (the prior's verified full prepared text)
+to report an entity whose text is absent from it as added instead.
 New coverage or exact-provenance gaps are also reviewable. Each available side
 retains its exact snapshot reference, observation time, locator, excerpt, and
 extractor. An absent side is explicit and anchored to the corresponding
