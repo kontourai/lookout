@@ -53,7 +53,7 @@ test("first observation is a fact-only baseline, does not call diff, and has a n
     assert.deepEqual(result.value.events, []);
     assert.equal(result.value.priorObservationId, null);
     assert.equal(result.value.facts[0]?.kind, "baseline-established");
-    assert.equal(result.value.committedObservation.snapshotRef, current.snapshotRef);
+    assert.equal(result.value.committedObservation?.snapshotRef, current.snapshotRef);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -66,7 +66,7 @@ test("a genuine change produces proposal-set-facts, non-empty events, and a set 
     assert.equal(first.ok, true); if (!first.ok) return;
     const current = observation("snapshot-2", [proposal("new")]); const result = await emitter.emit({ ...common, current, check: anchor(current, "two") });
     assert.equal(result.ok, true); if (!result.ok) return;
-    assert.equal(result.value.priorObservationId, first.value.committedObservation.observationId);
+    assert.equal(result.value.priorObservationId, first.value.committedObservation?.observationId);
     assert.notEqual(result.value.events.length, 0);
     const event = result.value.events[0]; assert.equal(event?.kind, "field-changed");
     if (event?.kind === "field-changed") assert.equal(event.changeKind, "value-updated");
@@ -110,7 +110,7 @@ test("a diff callback that throws or returns an error result yields diff-error a
     assert.equal(failed.ok, false); if (failed.ok) return; assert.equal(failed.error.kind, "diff-error");
 
     const latest = await store.loadLatest("source-a");
-    assert.equal(latest.ok, true); if (latest.ok) assert.equal(latest.value?.observationId, first.value.committedObservation.observationId);
+    assert.equal(latest.ok, true); if (latest.ok) assert.equal(latest.value?.observationId, first.value.committedObservation?.observationId);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -13,6 +13,8 @@ import {
   createObservationStore,
   createObserveExtractDiff,
   diffProposalSets,
+  extractedSnapshotRef,
+  type ObserveExtractObservation,
   type ProposalSetIncompleteness,
   type ProposalSetObservation,
   type SemanticReviewChange,
@@ -130,6 +132,130 @@ describe("drift emission", () => {
       assert.equal(fact.value.unobservedProposalOccurrences?.length, 2);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+});
+
+describe("baseline continuity through the real store and emitter", () => {
+  const snapshots = new Map<string, Snapshot>();
+  const admissionStore: ExactSnapshotStore = {
+    async put() {}, async latest() { return undefined; }, async get() { return undefined; }, async list() { return []; },
+    async findExact(reference) {
+      const found = snapshots.get(`${reference.sourceId}:${reference.bodyHash}:${reference.fetchedAt}`);
+      return found ? { kind: "found", snapshot: found } : { kind: "missing" };
+    },
+  };
+  const observation = (label: string, second: number, proposals: readonly ExtractionProposal[], incomplete?: ProposalSetIncompleteness): ProposalSetObservation => {
+    const body = `body:${label}`;
+    const snapshot: Snapshot = { sourceId: "source-a", url: "https://example.test/source-a", status: 200, fetchedAt: `2026-07-10T12:01:${String(second).padStart(2, "0")}.000Z`, body, bodyHash: createHash("sha256").update(body).digest("hex") };
+    snapshots.set(`${snapshot.sourceId}:${snapshot.bodyHash}:${snapshot.fetchedAt}`, snapshot);
+    return { sourceId: "source-a", snapshotRef: buildSnapshotSourceRef(snapshot), observedAt: `${label}-time`, proposals, ...(incomplete ? { incomplete } : {}) };
+  };
+  const anchor = (current: ProposalSetObservation) => ({ checkedAt: `${current.observedAt}-checked`, resultKind: "changed" as const, currentSnapshotRef: current.snapshotRef });
+  const eventKeys = (events: readonly import("../src/index.js").ProposalDiffEvent[]) => events.map((event) => event.kind === "field-changed" ? `${event.entityKey}/${event.fieldKey}:${event.changeKind}` : `${event.entityKey}:${event.kind}`);
+
+  test("complete, then incomplete, then complete: no false population and the real removal is reported", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const store = createObservationStore({ root });
+      const emitter = createDriftEmitter<Entity>({ store, snapshotStore: admissionStore, now: () => "2026-07-10T12:00:00.000Z" });
+      // A: entry 0 has name and price, entry 1 exists.
+      const a = observation("sequence-a", 1, priorProposals);
+      const first = await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks });
+      assert.equal(first.ok, true); if (!first.ok) return;
+      // B: a chunk was lost; only entry 0's name was read.
+      const b = observation("sequence-b", 2, currentProposals, lostChunk);
+      const second = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks });
+      assert.equal(second.ok, true); if (!second.ok) return;
+      assert.deepEqual(second.value.events, []);
+      assert.equal(second.value.committedObservation, null);
+      const head = await store.loadLatest("source-a");
+      assert.equal(head.ok && head.value?.observationId, first.value.committedObservation?.observationId);
+      // C: complete again; entry 0's price was there all along and entry 1 is really gone.
+      const c = observation("sequence-c", 3, [proposal("name", 0, "first"), proposal("price", 0, "10")]);
+      const third = await emitter.emit({ source: source(), current: c, check: anchor(c), callbacks });
+      assert.equal(third.ok, true); if (!third.ok) return;
+      assert.equal(third.value.priorObservationId, first.value.committedObservation?.observationId);
+      assert.deepEqual(eventKeys(third.value.events), []);
+      const fact = third.value.facts[0];
+      assert.equal(fact?.kind, "proposal-set-facts"); if (fact?.kind !== "proposal-set-facts") return;
+      assert.deepEqual(fact.value.removedEntities, ["entry-1"]);
+      assert.deepEqual(fact.value.removedProposalEvidence?.map((item) => `${item.entityKey}/${item.fieldKey}`), ["entry-1/name"]);
+      assert.notEqual(third.value.committedObservation, null);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  test("an incomplete first baseline is stored with its marker, and what it missed is newly observed, not added", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const store = createObservationStore({ root });
+      const emitter = createDriftEmitter<Entity>({ store, snapshotStore: admissionStore, now: () => "2026-07-10T12:00:00.000Z" });
+      const a = observation("partial-first", 4, currentProposals, lostChunk);
+      const first = await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks });
+      assert.equal(first.ok, true); if (!first.ok) return;
+      const stored = await store.loadLatest("source-a");
+      assert.equal(stored.ok, true); if (!stored.ok) return;
+      assert.deepEqual(stored.value?.incomplete, lostChunk);
+      const c = observation("complete-next", 5, priorProposals);
+      const next = await emitter.emit({ source: source(), current: c, check: anchor(c), callbacks });
+      assert.equal(next.ok, true); if (!next.ok) return;
+      assert.deepEqual(eventKeys(next.value.events), []);
+      const fact = next.value.facts[0];
+      assert.equal(fact?.kind, "proposal-set-facts"); if (fact?.kind !== "proposal-set-facts") return;
+      assert.deepEqual(fact.priorIncomplete, lostChunk);
+      assert.deepEqual(fact.value.addedProposalEvidence, []);
+      assert.deepEqual(fact.value.newlyObservedEntities, ["entry-1"]);
+      assert.deepEqual(fact.value.newlyObservedProposalEvidence?.map((item) => `${item.entityKey}/${item.fieldKey}`), ["entry-0/price", "entry-1/name"]);
+      // A complete run replaces an incomplete baseline.
+      const head = await store.loadLatest("source-a");
+      assert.equal(head.ok && head.value?.incomplete, undefined);
+      assert.equal(head.ok && head.value?.observationId, next.value.committedObservation?.observationId);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  test("the stored marker is digest-covered and a malformed one is refused", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const store = createObservationStore({ root });
+      const record = (incomplete: unknown) => ({ observation: { sourceId: "source-a", snapshotRef: "snapshot-1", observedAt: "observed", proposals: currentProposals, incomplete: incomplete as ProposalSetIncompleteness }, recordedAt: "recorded", check: { checkedAt: "checked", resultKind: "changed" as const, currentSnapshotRef: "snapshot-1" } });
+      const malformed = await store.commit(record({ reason: "" }), null);
+      assert.equal(malformed.ok, false);
+      const committed = await store.commit(record(lostChunk), null);
+      assert.equal(committed.ok, true); if (!committed.ok) return;
+      const file = path.join(root, committed.value.sourceKey, `${committed.value.observationId}.json`);
+      const { readFile, writeFile } = await import("node:fs/promises");
+      await writeFile(file, (await readFile(file, "utf8")).replace("provider-failure", "content-truncated"));
+      const tampered = await store.loadLatest("source-a");
+      assert.equal(tampered.ok, false);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+});
+
+describe("what counts as extracted", () => {
+  const observed = (partial: Record<string, unknown> | undefined, entries: readonly ExtractionCoverageEntry[]): ObserveExtractObservation => ({
+    source: { id: "source-a", url: "https://example.test/source-a", kind: "web-page" },
+    check: { kind: "changed", sourceId: "source-a", sourceUrl: "https://example.test/source-a", checkedAt: "checked", warnings: [], priorSnapshotRef: null, currentSnapshotRef: "snapshot-current", changeBasis: "initial" },
+    outcome: partial === undefined ? "completed" : "partial",
+    sourceSnapshot: { priorSnapshotRef: null, currentSnapshotRef: "snapshot-current" },
+    preparedArtifact: null, proposalSet: null,
+    attempt: { extractedAt: "at", providerCalls: 2, totalTokensUsed: 1, ...(partial ? { partial: { completedChunks: 2, remainingChunks: 0, ...partial } as never } : {}), coverage: entries },
+  });
+  const done = { chunk: 1, start: 0, end: 10, status: "complete" as const };
+  const cut = { chunk: 2, start: 10, end: 20, status: "unread" as const, reason: "content-truncated" as const };
+  const capped = { chunk: 2, start: 10, end: 20, status: "output-truncated" as const };
+  const unusable = { chunk: 2, start: 10, end: 20, status: "unread" as const, reason: "missing-tool-call" as const };
+
+  test("a content cut repeats on the same capture, so it counts as extracted", () => {
+    assert.equal(extractedSnapshotRef(observed({ reason: "content-truncated" }, [done, cut])), "snapshot-current");
+  });
+  for (const [label, partial, entries] of [
+    ["an answer cut at the output cap", { reason: "output-truncated" }, [done, capped]],
+    ["an unusable answer", { reason: "provider-failure" }, [done, unusable]],
+    ["a token budget stop", { reason: "max-total-tokens" }, [done, { ...cut, reason: "not-dispatched" as const }]],
+    ["a content cut alongside an output-cap loss", { reason: "content-truncated" }, [done, cut, { ...capped, chunk: 3, start: 20, end: 30 }]],
+  ] as const) {
+    test(`${label} is extracted again on the next check`, () => {
+      assert.equal(extractedSnapshotRef(observed(partial, entries)), null);
+    });
+  }
 });
 
 describe("semantic review work", () => {

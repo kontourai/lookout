@@ -73,8 +73,8 @@ test("emitter commits the invocation image when caller mutates current ref, anch
     (document.current.proposals[0] as { candidateValue: string }).candidateValue = "mutated";
     release(); const result = await pending;
     assert.equal(result.ok, true); if (!result.ok) return;
-    assert.equal(result.value.committedObservation.snapshotRef, reference);
-    assert.equal(result.value.committedObservation.proposals[0]?.candidateValue, "x");
+    assert.equal(result.value.committedObservation?.snapshotRef, reference);
+    assert.equal(result.value.committedObservation?.proposals[0]?.candidateValue, "x");
     const latest = await store.loadLatest("source-a"); assert.equal(latest.ok, true); if (latest.ok) assert.equal(latest.value?.snapshotRef, reference);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

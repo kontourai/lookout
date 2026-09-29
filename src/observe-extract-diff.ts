@@ -110,12 +110,27 @@ export interface ObserveExtractRecorder {
 
 /**
  * The snapshot an observation's extraction fully handled: the current snapshot
- * of a `completed`, `partial`, or `unchanged` observation, else `null`.
- * Recorders use this to answer `lastExtractedSnapshotRef`.
+ * of a `completed` or `unchanged` observation, or of a `partial` one whose
+ * every loss would recur on the same capture, else `null`. Recorders use this
+ * to answer `lastExtractedSnapshotRef`, so a capture whose loss could go
+ * differently next time (an answer cut at the output cap, an unusable answer,
+ * a token budget, a cancellation) is extracted again on the next check.
  */
 export function extractedSnapshotRef(observation: ObserveExtractObservation): string | null {
-  const handled = observation.outcome === "completed" || observation.outcome === "partial" || observation.outcome === "unchanged";
+  const handled = observation.outcome === "completed" || observation.outcome === "unchanged" ||
+    (observation.outcome === "partial" && repeatableLoss(observation.attempt));
   return handled && observation.sourceSnapshot !== null ? observation.sourceSnapshot.currentSnapshotRef : null;
+}
+
+// Losses fixed by the capture and the extraction configuration: the content
+// cap, the chunk cap, and the provider-call ceiling. Re-reading would lose the
+// same text again and spend the budget for nothing.
+const REPEATABLE_PARTIAL_REASONS: ReadonlySet<string> = new Set(["content-truncated", "max-chunks", "max-provider-calls"]);
+function repeatableLoss(attempt: ObserveExtractAttempt | null): boolean {
+  if (attempt?.partial === undefined || !REPEATABLE_PARTIAL_REASONS.has(attempt.partial.reason)) return false;
+  // The partial reason names only the first loss; coverage has the rest.
+  return (attempt.coverage ?? []).every((entry) => entry.status === "complete" ||
+    (entry.status === "unread" && (entry.reason === "content-truncated" || entry.reason === "not-dispatched")));
 }
 
 export interface ObserveExtractDiffOptions {

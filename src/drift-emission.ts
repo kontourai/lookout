@@ -38,6 +38,8 @@ export type DriftFact =
       readonly value: ProposalSetFacts;
       /** Present when the current extraction did not read all of its text; nothing the prior had is then reported as removed. */
       readonly incomplete?: ProposalSetIncompleteness;
+      /** Present when the prior baseline's extraction did not read all of its text; nothing the current run has is then reported as added. */
+      readonly priorIncomplete?: ProposalSetIncompleteness;
     };
 export interface DriftSuccess {
   readonly sourceId: string;
@@ -45,7 +47,14 @@ export interface DriftSuccess {
   readonly facts: readonly DriftFact[];
   /** The prior observation this drift was diffed against, or null on a first-ever (baseline) observation. */
   readonly priorObservationId: string | null;
-  readonly committedObservation: StoredProposalObservation;
+  /**
+   * The observation now stored as the source's baseline, or null when this run
+   * was incomplete and a baseline already existed. An incomplete run never
+   * replaces a baseline: the next run is diffed against the prior, so a value
+   * the incomplete run missed is neither re-reported as new nor, if it was
+   * really removed, lost.
+   */
+  readonly committedObservation: StoredProposalObservation | null;
   readonly warnings: readonly string[];
 }
 export type DriftErrorKind = "invalid-input" | "prior-state-error" | "diff-error" | "persistence-error" | "serialization-error" | "unexpected";
@@ -91,6 +100,9 @@ function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
       addedProposalEvidence: sorted(value.facts.addedProposalEvidence ?? []),
       removedProposalEvidence: sorted(value.facts.removedProposalEvidence ?? []),
       confidenceChanges: sorted(value.facts.confidenceChanges ?? []),
+      ...(value.facts.newlyObservedProposalOccurrences === undefined ? {} : { newlyObservedProposalOccurrences: sorted(value.facts.newlyObservedProposalOccurrences) }),
+      ...(value.facts.newlyObservedProposalEvidence === undefined ? {} : { newlyObservedProposalEvidence: sorted(value.facts.newlyObservedProposalEvidence) }),
+      ...(value.facts.newlyObservedEntities === undefined ? {} : { newlyObservedEntities: [...value.facts.newlyObservedEntities].sort() }),
       ...(value.facts.unobservedProposalOccurrences === undefined ? {} : { unobservedProposalOccurrences: sorted(value.facts.unobservedProposalOccurrences) }),
       ...(value.facts.unobservedProposalEvidence === undefined ? {} : { unobservedProposalEvidence: sorted(value.facts.unobservedProposalEvidence) }),
       ...(value.facts.unobservedEntities === undefined ? {} : { unobservedEntities: [...value.facts.unobservedEntities].sort() }),
@@ -134,14 +146,14 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           try {
             // Diff callbacks receive their own clone, never the image used for
             // durable commit below.
-            derived = diff({ prior: { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, proposals: capture(prior.proposals) ?? [] }, current: capture(invocation.current)!, ...invocation.callbacks });
+            derived = diff({ prior: { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, proposals: capture(prior.proposals) ?? [], ...incompleteness(prior) }, current: capture(invocation.current)!, ...invocation.callbacks });
           } catch (cause) {
             return { ok: false, error: { kind: "diff-error", message: "Proposal diff threw", cause } };
           }
           if (!derived.ok) return { ok: false, error: { kind: "diff-error", message: derived.error.message, cause: derived.error } };
           const normalized = normalizeDiff(derived.value);
           events = normalized.events;
-          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts, ...incompleteness(invocation.current) }];
+          facts = [{ kind: "proposal-set-facts", priorSnapshotRef: prior.snapshotRef, currentSnapshotRef: invocation.current.snapshotRef, origin: invocation.source.kind, resolution: "observation", value: normalized.facts, ...incompleteness(invocation.current), ...(prior.incomplete === undefined ? {} : { priorIncomplete: prior.incomplete }) }];
         }
 
         try {
@@ -150,6 +162,9 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           return { ok: false, error: { kind: "serialization-error", message: "Drift result is not serializable", cause } };
         }
 
+        if (prior !== null && invocation.current.incomplete !== undefined) {
+          return { ok: true, value: { sourceId: invocation.source.id, events, facts, priorObservationId, committedObservation: null, warnings: [] } };
+        }
         const committed = await options.store.commit({ observation: invocation.current, recordedAt, check: invocation.check }, prior?.observationId ?? null);
         if (!committed.ok) return { ok: false, error: { kind: "persistence-error", message: committed.error.message, cause: committed.error } };
         return { ok: true, value: { sourceId: invocation.source.id, events, facts, priorObservationId, committedObservation: committed.value, warnings: committed.warnings ?? [] } };
@@ -160,7 +175,7 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
   };
 }
 
-function incompleteness(observation: ProposalSetObservation): { readonly incomplete?: ProposalSetIncompleteness } {
+function incompleteness(observation: { readonly incomplete?: ProposalSetIncompleteness }): { readonly incomplete?: ProposalSetIncompleteness } {
   return observation.incomplete === undefined ? {} : { incomplete: observation.incomplete };
 }
 function capture<T>(value: T): T | null { try { return structuredClone(value); } catch { return null; } }

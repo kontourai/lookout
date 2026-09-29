@@ -98,6 +98,13 @@ describe("proposal diff", () => {
     assert.equal(Object.hasOwn(changes[0]!.current, "confidence"), false);
   });
 
+  test("a numeric difference between two present scores is not a confidence change", () => {
+    const result = diffProposalSets({ prior: plain("snapshot-1", [withConfidence("same", 0.8)]), current: plain("snapshot-2", [withConfidence("same", 0.81)]), ...callbacks });
+    assert.equal(result.ok, true); if (!result.ok) return;
+    assert.deepEqual(result.value.facts.confidenceChanges, []);
+    assert.deepEqual(result.value.events, []);
+  });
+
   test("identical confidence, present or absent on both sides, is not a confidence change", () => {
     for (const [prior, current] of [[withConfidence("same", 0.8), withConfidence("same", 0.8)], [withoutConfidence("same"), withoutConfidence("same")]] as const) {
       const result = diffProposalSets({ prior: plain("snapshot-1", [prior]), current: plain("snapshot-2", [current]), ...callbacks });
@@ -133,7 +140,7 @@ describe("drift emission", () => {
       const second = observation("confidence-2", 2, [withoutConfidence("same")]);
       const result = await emitter.emit({ source: source(), current: second, check: anchor(second, "two"), callbacks });
       assert.equal(result.ok, true); if (!result.ok) return assert.fail("expected success");
-      assert.equal(Object.hasOwn(result.value.committedObservation.proposals[0]!, "confidence"), false);
+      assert.equal(Object.hasOwn(result.value.committedObservation!.proposals[0]!, "confidence"), false);
       const fact = result.value.facts[0];
       assert.equal(fact?.kind, "proposal-set-facts"); if (fact?.kind !== "proposal-set-facts") return;
       assert.equal(fact.value.confidenceChanges?.length, 1);

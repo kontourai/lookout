@@ -425,8 +425,9 @@ when the capture has the same URL, body hash, and text decoding as the
 recorder's `lastExtractedSnapshotRef`. Both references are resolved through
 `snapshots`; one that does not resolve (for example, pruned) counts as a
 different capture and is extracted. That is the last snapshot an observation fully
-handled: the current snapshot of a `completed`, `partial`, or `unchanged`
-observation, as `extractedSnapshotRef(observation)` returns. Otherwise the
+handled: the current snapshot of a `completed` or `unchanged` observation, or
+of a `partial` one whose every loss would recur on the same capture (the content
+cap, the chunk cap, or the provider-call ceiling), as `extractedSnapshotRef(observation)` returns. Otherwise the
 capture was persisted but never extracted (for example, a provider failed on the
 check that first saw it), so it is extracted now against that baseline instead
 of being reported as unchanged forever.
@@ -444,10 +445,16 @@ reason, or `extraction-error`, plus coverage). When that proposal set is
 diffed or passed to `createDriftEmitter`, a proposal the prior had that the
 incomplete run lacks may sit in text that was never read, so it is reported
 under `unobserved*` facts, never as a removal, and drift facts carry the same
-`incomplete` marker. A proposal's `confidence` is optional: when absent it stays
-absent in stored observations, diff evidence, and review candidates, and a
-retained field whose confidence changed, appeared, or disappeared is listed in
-`confidenceChanges`.
+`incomplete` marker. An incomplete run never replaces an existing baseline in
+the observation store (`committedObservation` is then `null`), so the next run
+is diffed against the last baseline: a value the incomplete run missed is not
+re-reported as new, and a real removal is still reported. An incomplete first
+observation is stored with its marker, and what a later run has that it lacked
+is listed under `newlyObserved*` facts rather than as additions. A proposal's
+`confidence` is optional: when absent it stays absent in stored observations,
+diff evidence, and review candidates, and a retained field whose confidence
+appeared or disappeared is listed in `confidenceChanges` (a fact, not an event;
+numeric differences between two scores are not listed).
 A first changed observation
 has `priorObservationId: null`; it is a baseline observation, not a fabricated
 list of additions or removals.

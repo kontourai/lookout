@@ -42,8 +42,11 @@ capability, which is not invoked.
 capture before extraction runs (extraction resolves it by reference). A capture
 whose extraction failed is therefore already the baseline on the next check. So
 the composition asks the recorder for the last snapshot an observation fully
-handled (`extractedSnapshotRef`: the current snapshot of a `completed`,
-`partial`, or `unchanged` observation). When the unchanged capture differs from
+handled (`extractedSnapshotRef`: the current snapshot of a `completed` or
+`unchanged` observation, or of a `partial` one whose every loss would recur on
+the same capture: the content cap, the chunk cap, or the provider-call
+ceiling). A partial run whose loss could go differently next time, such as an
+answer cut at the output cap, is extracted again. When the unchanged capture differs from
 it, or there is none, the capture is extracted against that baseline rather
 than reported as unchanged (kontourai/lookout#86).
 

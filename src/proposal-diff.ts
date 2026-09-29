@@ -91,9 +91,10 @@ export interface ProvenanceChangeFact {
 }
 
 /**
- * A retained field whose confidence differs between the two observations,
- * including one side having none. Each evidence carries its own confidence or
- * omits the key.
+ * A retained field that has a confidence on one side and none on the other.
+ * Numeric differences between two present scores are not listed: provider
+ * scores are uncalibrated and jitter between runs. Each evidence carries its
+ * own confidence or omits the key. A fact, never an event.
  */
 export interface ConfidenceChangeFact {
   readonly entityKey: string;
@@ -112,8 +113,18 @@ export interface ProposalSetFacts {
   readonly addedProposalEvidence?: readonly ProposalEvidence[];
   /** Exact observation-anchored evidence for every removed proposal occurrence. */
   readonly removedProposalEvidence?: readonly ProposalEvidence[];
-  /** Retained fields whose confidence changed, appeared, or disappeared. */
+  /** Retained fields whose confidence appeared or disappeared. */
   readonly confidenceChanges?: readonly ConfidenceChangeFact[];
+  /**
+   * Current proposal occurrences missing from an incomplete prior observation.
+   * The prior may have held them in text it never read, so they are not in the
+   * added facts and raise no event.
+   */
+  readonly newlyObservedProposalOccurrences?: readonly ExtractionProposal[];
+  /** Exact observation-anchored evidence for every newly observed proposal occurrence. */
+  readonly newlyObservedProposalEvidence?: readonly ProposalEvidence[];
+  /** Current entities missing from an incomplete prior observation. */
+  readonly newlyObservedEntities?: readonly string[];
   /**
    * Prior proposal occurrences missing from an incomplete current observation.
    * Whether they were removed is unknown, so they are not in the removed facts.
@@ -265,6 +276,12 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
   // Text the current extraction never read may still hold what the prior saw,
   // so nothing the prior had can be called removed.
   const currentIncomplete = input.current.incomplete !== undefined;
+  // Symmetrically, what the current run has that an incomplete prior lacks may
+  // have been in the prior's unread text, so it is not called added.
+  const priorIncomplete = input.prior.incomplete !== undefined;
+  const newlyObservedProposalOccurrences: ExtractionProposal[] = [];
+  const newlyObservedProposalEvidence: ProposalEvidence[] = [];
+  const newlyObservedEntities: string[] = [];
 
   for (const pair of entities.value.retained) {
     const entityKeyResult = identity("entityIdentity", () => input.entityIdentity(pair.prior));
@@ -280,12 +297,12 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
     });
     if (!occurrences.ok) return occurrences;
     retainedProposalOccurrences.push(...occurrences.value.retained);
-    addedProposalOccurrences.push(...occurrences.value.additions);
+    (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(...occurrences.value.additions);
     (currentIncomplete ? unobservedProposalOccurrences : removedProposalOccurrences).push(...occurrences.value.removals);
     for (const proposal of occurrences.value.additions) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.current, proposal));
       if (!fieldKey.ok) return fieldKey;
-      addedProposalEvidence.push(evidence(input.current, entityKey, fieldKey.value, proposal));
+      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKey, fieldKey.value, proposal));
     }
     for (const proposal of occurrences.value.removals) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.prior, proposal));
@@ -315,7 +332,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       if (comparison.value.provenanceChanged) {
         provenanceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
       }
-      if (field.prior.proposal.confidence !== field.current.proposal.confidence) {
+      if ((field.prior.proposal.confidence === undefined) !== (field.current.proposal.confidence === undefined)) {
         confidenceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
       }
       if (comparison.value.valueChanged) {
@@ -325,6 +342,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       }
     }
     for (const field of fields.value.additions) {
+      if (priorIncomplete) continue;
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(field.entity, field.proposal));
       if (!fieldKey.ok) return fieldKey;
       events.push({
@@ -359,10 +377,11 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(entity, proposal));
       if (!fieldKey.ok) return fieldKey;
       current.push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      addedProposalEvidence.push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      addedProposalOccurrences.push(proposal);
+      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
+      (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(proposal);
     }
-    events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
+    if (priorIncomplete) newlyObservedEntities.push(entityKeyResult.value);
+    else events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
   }
 
   for (const entity of entities.value.removals) {
@@ -385,6 +404,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       events,
       facts: {
         retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence, confidenceChanges,
+        ...(priorIncomplete ? { newlyObservedProposalOccurrences, newlyObservedProposalEvidence, newlyObservedEntities } : {}),
         ...(currentIncomplete ? { unobservedProposalOccurrences, unobservedProposalEvidence, unobservedEntities } : {}),
       },
     },

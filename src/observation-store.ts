@@ -5,7 +5,7 @@ import path from "node:path";
 import { types } from "node:util";
 import type { ExtractionProposal } from "@kontourai/traverse";
 import { canonicalJson, compareCodeUnits } from "./canonical-json.js";
-import type { ProposalSetObservation } from "./proposal-diff.js";
+import type { ProposalSetIncompleteness, ProposalSetObservation } from "./proposal-diff.js";
 
 export interface ObservationCheckAnchor {
   readonly checkedAt: string;
@@ -29,6 +29,11 @@ export interface StoredProposalObservationV1 {
   readonly recordedAt: string;
   readonly check: ObservationCheckAnchor;
   readonly proposals: readonly ExtractionProposal[];
+  /**
+   * Present when the observation's extraction did not read all of its text.
+   * Covered by the digest; records without it are unchanged and still verify.
+   */
+  readonly incomplete?: ProposalSetIncompleteness;
 }
 
 /**
@@ -247,10 +252,25 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
     return { ok: false, error: { kind: "invalid-input", message: "Check anchor must match the current observation snapshot" } };
   }
   const proposals = [...observation.proposals].sort((a, b) => compareCodeUnits(canonical(a), canonical(b)));
-  const body = { version: 2 as const, sourceKey: sourceKey(observation.sourceId), sourceId: observation.sourceId, snapshotRef: observation.snapshotRef, observedAt: observation.observedAt, recordedAt: input.recordedAt, check, proposals };
+  if (observation.incomplete !== undefined && !validIncompleteness(observation.incomplete)) {
+    return { ok: false, error: { kind: "invalid-input", message: "Current proposal observation incompleteness is malformed" } };
+  }
+  const body = { version: 2 as const, sourceKey: sourceKey(observation.sourceId), sourceId: observation.sourceId, snapshotRef: observation.snapshotRef, observedAt: observation.observedAt, recordedAt: input.recordedAt, check, proposals, ...(observation.incomplete === undefined ? {} : { incomplete: observation.incomplete }) };
   try { return { ok: true, value: { ...body, observationId: digest(body) } }; }
   catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Observation could not be serialized", cause } }; }
   } catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Current proposal observation could not be inspected", cause } }; }
+}
+
+function validIncompleteness(value: unknown): value is ProposalSetIncompleteness {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (typeof item.reason !== "string" || item.reason === "") return false;
+  if (item.coverage === undefined) return true;
+  return Array.isArray(item.coverage) && item.coverage.every((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    const range = entry as Record<string, unknown>;
+    return Number.isSafeInteger(range.chunk) && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && typeof range.status === "string" && (range.reason === undefined || typeof range.reason === "string");
+  });
 }
 
 function validProposal(value: unknown): value is ExtractionProposal {
@@ -269,7 +289,7 @@ function validProposal(value: unknown): value is ExtractionProposal {
 function validate(value: unknown, expectedSourceId: string): ObservationStoreResult<StoredProposalObservation> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: { kind: "corrupt-state", message: "Stored observation is not an object" } };
   const item = value as Partial<StoredProposalObservation>;
-  if ((item.version !== 1 && item.version !== 2) || item.sourceId !== expectedSourceId || item.sourceKey !== sourceKey(expectedSourceId) || typeof item.observationId !== "string" || !/^[a-f0-9]{64}$/.test(item.observationId) || typeof item.snapshotRef !== "string" || item.snapshotRef === "" || typeof item.observedAt !== "string" || item.observedAt === "" || typeof item.recordedAt !== "string" || item.recordedAt === "" || !Array.isArray(item.proposals) || item.proposals.some((proposal) => !validProposal(proposal)) || !item.check || typeof item.check !== "object" || typeof item.check.checkedAt !== "string" || item.check.checkedAt === "" || (item.check.resultKind !== "changed" && item.check.resultKind !== "unchanged-hash") || item.check.currentSnapshotRef !== item.snapshotRef) {
+  if ((item.version !== 1 && item.version !== 2) || item.sourceId !== expectedSourceId || item.sourceKey !== sourceKey(expectedSourceId) || typeof item.observationId !== "string" || !/^[a-f0-9]{64}$/.test(item.observationId) || typeof item.snapshotRef !== "string" || item.snapshotRef === "" || typeof item.observedAt !== "string" || item.observedAt === "" || typeof item.recordedAt !== "string" || item.recordedAt === "" || !Array.isArray(item.proposals) || item.proposals.some((proposal) => !validProposal(proposal)) || (item.incomplete !== undefined && !validIncompleteness(item.incomplete)) || !item.check || typeof item.check !== "object" || typeof item.check.checkedAt !== "string" || item.check.checkedAt === "" || (item.check.resultKind !== "changed" && item.check.resultKind !== "unchanged-hash") || item.check.currentSnapshotRef !== item.snapshotRef) {
     return { ok: false, error: { kind: "corrupt-state", message: "Stored observation schema or continuity is invalid" } };
   }
   const { observationId, ...body } = item as StoredProposalObservation;
