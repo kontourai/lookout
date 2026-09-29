@@ -10,6 +10,7 @@ import { validatePreparedArtifact } from "@kontourai/traverse";
 import { resolveSnapshotSourceRef } from "@kontourai/forage/fetch";
 import type { SnapshotStore } from "@kontourai/forage/fetch";
 import { captureDecoding } from "./capture-decoding.js";
+import { lossRecurs } from "./incompleteness.js";
 import type { CheckResult } from "./check-result.js";
 import type { ProposalSetIncompleteness, ProposalSetObservation } from "./proposal-diff.js";
 import type { LookoutSource } from "./registry.js";
@@ -122,15 +123,8 @@ export function extractedSnapshotRef(observation: ObserveExtractObservation): st
   return handled && observation.sourceSnapshot !== null ? observation.sourceSnapshot.currentSnapshotRef : null;
 }
 
-// Losses fixed by the capture and the extraction configuration: the content
-// cap, the chunk cap, and the provider-call ceiling. Re-reading would lose the
-// same text again and spend the budget for nothing.
-const REPEATABLE_PARTIAL_REASONS: ReadonlySet<string> = new Set(["content-truncated", "max-chunks", "max-provider-calls"]);
 function repeatableLoss(attempt: ObserveExtractAttempt | null): boolean {
-  if (attempt?.partial === undefined || !REPEATABLE_PARTIAL_REASONS.has(attempt.partial.reason)) return false;
-  // The partial reason names only the first loss; coverage has the rest.
-  return (attempt.coverage ?? []).every((entry) => entry.status === "complete" ||
-    (entry.status === "unread" && (entry.reason === "content-truncated" || entry.reason === "not-dispatched")));
+  return attempt?.partial !== undefined && lossRecurs({ reason: attempt.partial.reason, ...(attempt.coverage === undefined ? {} : { coverage: attempt.coverage }) });
 }
 
 export interface ObserveExtractDiffOptions {

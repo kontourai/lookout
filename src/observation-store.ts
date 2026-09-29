@@ -6,6 +6,7 @@ import { types } from "node:util";
 import type { ExtractionProposal } from "@kontourai/traverse";
 import { canonicalJson, compareCodeUnits } from "./canonical-json.js";
 import type { ProposalSetIncompleteness, ProposalSetObservation } from "./proposal-diff.js";
+import { validIncompleteness } from "./incompleteness.js";
 
 export interface ObservationCheckAnchor {
   readonly checkedAt: string;
@@ -259,18 +260,6 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
   try { return { ok: true, value: { ...body, observationId: digest(body) } }; }
   catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Observation could not be serialized", cause } }; }
   } catch (cause) { return { ok: false, error: { kind: "invalid-input", message: "Current proposal observation could not be inspected", cause } }; }
-}
-
-function validIncompleteness(value: unknown): value is ProposalSetIncompleteness {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const item = value as Record<string, unknown>;
-  if (typeof item.reason !== "string" || item.reason === "") return false;
-  if (item.coverage === undefined) return true;
-  return Array.isArray(item.coverage) && item.coverage.every((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
-    const range = entry as Record<string, unknown>;
-    return Number.isSafeInteger(range.chunk) && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && typeof range.status === "string" && (range.reason === undefined || typeof range.reason === "string");
-  });
 }
 
 function validProposal(value: unknown): value is ExtractionProposal {

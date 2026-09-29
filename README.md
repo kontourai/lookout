@@ -445,12 +445,19 @@ reason, or `extraction-error`, plus coverage). When that proposal set is
 diffed or passed to `createDriftEmitter`, a proposal the prior had that the
 incomplete run lacks may sit in text that was never read, so it is reported
 under `unobserved*` facts, never as a removal, and drift facts carry the same
-`incomplete` marker. An incomplete run never replaces an existing baseline in
-the observation store (`committedObservation` is then `null`), so the next run
-is diffed against the last baseline: a value the incomplete run missed is not
-re-reported as new, and a real removal is still reported. An incomplete first
-observation is stored with its marker, and what a later run has that it lacked
-is listed under `newlyObserved*` facts rather than as additions. A proposal's
+`incomplete` marker. A run whose loss could go differently next time (an
+output cap, an unusable answer, a provider failure, a token budget, a
+cancellation) never replaces an existing baseline in the observation store
+(`committedObservation` is then `null`), so the next run is diffed against the
+last baseline: a value that run missed is not re-reported as new, and a real
+removal is still reported. A value change such a run did see is reported by it
+and again by the next run that is diffed against the same baseline. A run
+whose every loss recurs on the same capture (the content cap, the chunk cap,
+the provider-call ceiling) and a first observation are stored with their
+marker, so a page that stays capped reports each change once. What a later run
+has that an incomplete baseline lacked is listed under `newlyObserved*` facts
+rather than as additions or events; a value removed from text the cap hid is
+not reported. A proposal's
 `confidence` is optional: when absent it stays absent in stored observations,
 diff evidence, and review candidates, and a retained field whose confidence
 appeared or disappeared is listed in `confidenceChanges` (a fact, not an event;

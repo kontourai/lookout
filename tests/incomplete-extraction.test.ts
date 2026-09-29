@@ -183,6 +183,60 @@ describe("baseline continuity through the real store and emitter", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  // The provider-call ceiling stopped the run before chunk 2: the same capture
+  // would stop at the same place again.
+  const capped: ProposalSetIncompleteness = { reason: "max-provider-calls", coverage: [
+    { chunk: 1, start: 0, end: 10, status: "complete" },
+    { chunk: 2, start: 10, end: 20, status: "unread", reason: "not-dispatched" },
+  ] };
+
+  test("a capped page advances the baseline, so a new entity is reported once and not on every capture", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const store = createObservationStore({ root });
+      const emitter = createDriftEmitter<Entity>({ store, snapshotStore: admissionStore, now: () => "2026-07-10T12:00:00.000Z" });
+      const a = observation("capped-a", 10, [proposal("name", 0, "first"), proposal("name", 1, "second")]);
+      assert.equal((await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks })).ok, true);
+      const cappedProposals = [proposal("name", 0, "first"), proposal("name", 2, "third")];
+      const perRun: string[][] = [];
+      for (const [label, second] of [["capped-b", 11], ["capped-b1", 12], ["capped-b2", 13]] as const) {
+        const b = observation(label, second, cappedProposals, capped);
+        const result = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks });
+        assert.equal(result.ok, true); if (!result.ok) return;
+        assert.notEqual(result.value.committedObservation, null);
+        assert.deepEqual(result.value.committedObservation?.incomplete, capped);
+        perRun.push(eventKeys(result.value.events));
+      }
+      assert.deepEqual(perRun, [["entry-2:new-entity-appeared"], [], []]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  test("capped, then complete: what the cap hid is newly observed, and a real removal is still reported", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const store = createObservationStore({ root });
+      const emitter = createDriftEmitter<Entity>({ store, snapshotStore: admissionStore, now: () => "2026-07-10T12:00:00.000Z" });
+      // A: entries 0, 1 and 2 (entry 2 lies past the later cap).
+      const a = observation("hidden-a", 20, [proposal("name", 0, "first"), proposal("name", 1, "second"), proposal("name", 2, "third")]);
+      assert.equal((await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks })).ok, true);
+      // B: capped; entries 0 and 1 read, entry 2 not reached.
+      const b = observation("hidden-b", 21, [proposal("name", 0, "first"), proposal("name", 1, "second")], capped);
+      const second = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks });
+      assert.equal(second.ok, true); if (!second.ok) return;
+      assert.deepEqual(second.value.events, []);
+      // C: complete; entry 2 was there all along, entry 1 is really gone.
+      const c = observation("hidden-c", 22, [proposal("name", 0, "first"), proposal("name", 2, "third")]);
+      const third = await emitter.emit({ source: source(), current: c, check: anchor(c), callbacks });
+      assert.equal(third.ok, true); if (!third.ok) return;
+      assert.deepEqual(eventKeys(third.value.events), []);
+      const fact = third.value.facts[0];
+      assert.equal(fact?.kind, "proposal-set-facts"); if (fact?.kind !== "proposal-set-facts") return;
+      assert.deepEqual(fact.priorIncomplete, capped);
+      assert.deepEqual(fact.value.removedEntities, ["entry-1"]);
+      assert.deepEqual(fact.value.newlyObservedEntities, ["entry-2"]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   test("an incomplete first baseline is stored with its marker, and what it missed is newly observed, not added", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
     try {
@@ -225,6 +279,30 @@ describe("baseline continuity through the real store and emitter", () => {
       await writeFile(file, (await readFile(file, "utf8")).replace("provider-failure", "content-truncated"));
       const tampered = await store.loadLatest("source-a");
       assert.equal(tampered.ok, false);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+});
+
+describe("a stored incompleteness marker", () => {
+  test("with an unknown reason is refused on load even when its digest is correct", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "lookout-incomplete-"));
+    try {
+      const { readFile, writeFile, unlink } = await import("node:fs/promises");
+      const { canonicalJson } = await import("../src/canonical-json.js");
+      const store = createObservationStore({ root });
+      const committed = await store.commit({ observation: { sourceId: "source-a", snapshotRef: "snapshot-1", observedAt: "observed", proposals: currentProposals, incomplete: lostChunk }, recordedAt: "recorded", check: { checkedAt: "checked", resultKind: "changed", currentSnapshotRef: "snapshot-1" } }, null);
+      assert.equal(committed.ok, true); if (!committed.ok) return;
+      const dir = path.join(root, committed.value.sourceKey);
+      const stored = JSON.parse(await readFile(path.join(dir, `${committed.value.observationId}.json`), "utf8")) as Record<string, unknown>;
+      const { observationId: _old, ...body } = stored;
+      const forged = { ...body, incomplete: { reason: "made-up-reason" } };
+      const observationId = createHash("sha256").update(`${canonicalJson(forged)}\n`).digest("hex");
+      await unlink(path.join(dir, `${committed.value.observationId}.json`));
+      await writeFile(path.join(dir, `${observationId}.json`), `${canonicalJson({ ...forged, observationId })}\n`);
+      await writeFile(path.join(dir, "latest.json"), `${canonicalJson({ version: 1, sourceId: "source-a", observationId })}\n`);
+      const loaded = await store.loadLatest("source-a");
+      assert.equal(loaded.ok, false);
+      if (!loaded.ok) assert.match(loaded.error.message, /schema or continuity/);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

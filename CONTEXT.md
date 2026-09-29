@@ -83,9 +83,10 @@ results rather than throwing.
   proposal set is marked `incomplete` (its extraction did not read all of its
   text), nothing the prior had is reported as removed: those proposals and
   entities are `unobserved`, and the fact carries the `incomplete` marker. An
-  incomplete run never replaces an existing baseline (`committedObservation:
-  null`); an incomplete first baseline is stored with its marker, and what a
-  later run adds against it is `newlyObserved`, not added. Registry kind
+  incomplete run whose loss might not recur never replaces an existing baseline
+  (`committedObservation: null`); one whose every loss recurs (a cap), or a
+  first observation, is stored with its marker, and what a later run adds
+  against it is `newlyObserved`, not added. Registry kind
   supplies fact `origin`; resolution is always `observation`. First observation
   produces a `baseline-established` fact, no events, and a null
   `priorObservationId`.

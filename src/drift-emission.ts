@@ -4,6 +4,7 @@ import type { ObservationCheckAnchor, ObservationStore, StoredProposalObservatio
 import type { SnapshotStore } from "@kontourai/forage";
 import { compareCodeUnits } from "./canonical-json.js";
 import { admitProposalObservation } from "./observation-admission.js";
+import { lossRecurs } from "./incompleteness.js";
 
 // Neutral drift emission. Lookout is a CHANGE building block: it detects and
 // reports drift in its own vocabulary and depends on NOTHING in the trust layer
@@ -49,10 +50,12 @@ export interface DriftSuccess {
   readonly priorObservationId: string | null;
   /**
    * The observation now stored as the source's baseline, or null when this run
-   * was incomplete and a baseline already existed. An incomplete run never
-   * replaces a baseline: the next run is diffed against the prior, so a value
-   * the incomplete run missed is neither re-reported as new nor, if it was
-   * really removed, lost.
+   * lost text in a way that might not recur (an output cap, an unusable answer,
+   * a provider failure, a token budget, a cancellation) and a baseline already
+   * existed. Such a run never replaces a baseline, so the next run is diffed
+   * against the prior. A run whose every loss recurs on the same capture (the
+   * content cap, the chunk cap, the provider-call ceiling) is stored with its
+   * `incomplete` marker.
    */
   readonly committedObservation: StoredProposalObservation | null;
   readonly warnings: readonly string[];
@@ -162,7 +165,11 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           return { ok: false, error: { kind: "serialization-error", message: "Drift result is not serializable", cause } };
         }
 
-        if (prior !== null && invocation.current.incomplete !== undefined) {
+        // A loss that could go differently next time never replaces a
+        // baseline. A loss that recurs on every capture (a cap) does, with its
+        // marker; otherwise a capped page would re-diff against the same old
+        // baseline and repeat the same events on every capture.
+        if (prior !== null && invocation.current.incomplete !== undefined && !lossRecurs(invocation.current.incomplete)) {
           return { ok: true, value: { sourceId: invocation.source.id, events, facts, priorObservationId, committedObservation: null, warnings: [] } };
         }
         const committed = await options.store.commit({ observation: invocation.current, recordedAt, check: invocation.check }, prior?.observationId ?? null);
