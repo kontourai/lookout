@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/kontourai/lookout/compare/v0.8.0...v0.8.1) (2026-09-29)
+
+
+### Features
+
+* anchor new entities against a capped prior's prepared text ([#97](https://github.com/kontourai/lookout/issues/97)) ([fb92e9a](https://github.com/kontourai/lookout/commit/fb92e9ad0d98d96b28d6abdae8bc2c5fac95e3b6)), closes [#96](https://github.com/kontourai/lookout/issues/96)
+
 ## [0.8.0](https://github.com/kontourai/lookout/compare/v0.7.0...v0.8.0) (2026-09-29)
 
 
