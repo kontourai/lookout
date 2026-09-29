@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/kontourai/lookout/compare/v0.7.0...v0.8.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* ProposalEvidence.confidence and the re-exported ExtractionProposal.confidence are now optional, ExtractionPartial.reason has three more members, and a diff whose current observation is marked incomplete no longer reports missing proposals as removed.
+
+### Features
+
+* take traverse 3.0.0; keep confidence optional and never read an incomplete run as complete ([#94](https://github.com/kontourai/lookout/issues/94)) ([f54b279](https://github.com/kontourai/lookout/commit/f54b279dcfc1f7793596a29e0b6eb45281b2df31))
+
 ## [0.7.0](https://github.com/kontourai/lookout/compare/v0.6.0...v0.7.0) (2026-09-28)
 
 
