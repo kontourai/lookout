@@ -60,6 +60,7 @@ export type {
 } from "./structural-diff.js";
 export { diffProposalSets, extractionProposalIdentity } from "./proposal-diff.js";
 export type {
+  ConfidenceChangeFact,
   FieldChangedEvent,
   FieldChangeKind,
   NewEntityAppearedEvent,
@@ -70,6 +71,7 @@ export type {
   ProposalSetDiff,
   ProposalSetDiffInput,
   ProposalSetFacts,
+  ProposalSetIncompleteness,
   ProposalSetObservation,
   ProvenanceChangeFact,
 } from "./proposal-diff.js";

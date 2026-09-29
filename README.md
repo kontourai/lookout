@@ -425,8 +425,9 @@ when the capture has the same URL, body hash, and text decoding as the
 recorder's `lastExtractedSnapshotRef`. Both references are resolved through
 `snapshots`; one that does not resolve (for example, pruned) counts as a
 different capture and is extracted. That is the last snapshot an observation fully
-handled: the current snapshot of a `completed`, `partial`, or `unchanged`
-observation, as `extractedSnapshotRef(observation)` returns. Otherwise the
+handled: the current snapshot of a `completed` or `unchanged` observation, or
+of a `partial` one whose every loss would recur on the same capture (the content
+cap, the chunk cap, or the provider-call ceiling), as `extractedSnapshotRef(observation)` returns. Otherwise the
 capture was persisted but never extracted (for example, a provider failed on the
 check that first saw it), so it is extracted now against that baseline instead
 of being reported as unchanged forever.
@@ -438,6 +439,29 @@ outcomes. Provider failures are reduced to provider-neutral `kind` and
 `retryable` classifications; provider names, messages, native diagnostics,
 free-form extraction warnings, raw responses, and thrown-error text are not
 copied into the durable observation.
+Traverse's per-chunk `coverage` is kept on the attempt. Every outcome other
+than `completed` also marks its proposal set `incomplete` (Traverse's partial
+reason, or `extraction-error`, plus coverage). When that proposal set is
+diffed or passed to `createDriftEmitter`, a proposal the prior had that the
+incomplete run lacks may sit in text that was never read, so it is reported
+under `unobserved*` facts, never as a removal, and drift facts carry the same
+`incomplete` marker. A run whose loss could go differently next time (an
+output cap, an unusable answer, a provider failure, a token budget, a
+cancellation) never replaces an existing baseline in the observation store
+(`committedObservation` is then `null`), so the next run is diffed against the
+last baseline: a value that run missed is not re-reported as new, and a real
+removal is still reported. A value change such a run did see is reported by it
+and again by the next run that is diffed against the same baseline. A run
+whose every loss recurs on the same capture (the content cap, the chunk cap,
+the provider-call ceiling) and a first observation are stored with their
+marker, so a page that stays capped reports each change once. What a later run
+has that an incomplete baseline lacked is listed under `newlyObserved*` facts
+rather than as additions or events; a value removed from text the cap hid is
+not reported. A proposal's
+`confidence` is optional: when absent it stays absent in stored observations,
+diff evidence, and review candidates, and a retained field whose confidence
+appeared or disappeared is listed in `confidenceChanges` (a fact, not an event;
+numeric differences between two scores are not listed).
 A first changed observation
 has `priorObservationId: null`; it is a baseline observation, not a fabricated
 list of additions or removals.

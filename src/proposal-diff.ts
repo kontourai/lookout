@@ -1,4 +1,4 @@
-import type { ExtractionProposal } from "@kontourai/traverse";
+import type { ExtractionCoverageEntry, ExtractionPartialReason, ExtractionProposal } from "@kontourai/traverse";
 import {
   canonicalValueKey,
   type DiffKernelError,
@@ -16,6 +16,23 @@ export interface ProposalSetObservation {
   readonly snapshotRef: string;
   readonly observedAt: string;
   readonly proposals: readonly ExtractionProposal[];
+  /**
+   * Present when the extraction behind `proposals` did not read and answer all
+   * of its prepared text. A proposal missing from such an observation may sit
+   * in text that was never read, so the diff reports it as unobserved, never
+   * as removed.
+   */
+  readonly incomplete?: ProposalSetIncompleteness;
+}
+
+/**
+ * Why a proposal set does not cover all of its source text: Traverse's partial
+ * reason, or `extraction-error` when the run failed without naming one.
+ */
+export interface ProposalSetIncompleteness {
+  readonly reason: ExtractionPartialReason | "extraction-error";
+  /** Traverse's per-chunk coverage for the run, when it reported one. */
+  readonly coverage?: readonly ExtractionCoverageEntry[];
 }
 
 export interface ProposalEvidence {
@@ -25,7 +42,8 @@ export interface ProposalEvidence {
   readonly entityKey: string;
   readonly fieldKey: string;
   readonly value: unknown;
-  readonly confidence: number;
+  /** The proposal's own confidence; absent when the proposal carried none. Never defaulted. */
+  readonly confidence?: number;
   readonly provenance: ExtractionProposal["provenance"];
   readonly extractor: string;
   readonly fieldPath: string;
@@ -72,6 +90,19 @@ export interface ProvenanceChangeFact {
   readonly current: ProposalEvidence;
 }
 
+/**
+ * A retained field that has a confidence on one side and none on the other.
+ * Numeric differences between two present scores are not listed: provider
+ * scores are uncalibrated and jitter between runs. Each evidence carries its
+ * own confidence or omits the key. A fact, never an event.
+ */
+export interface ConfidenceChangeFact {
+  readonly entityKey: string;
+  readonly fieldKey: string;
+  readonly prior: ProposalEvidence;
+  readonly current: ProposalEvidence;
+}
+
 export interface ProposalSetFacts {
   readonly retainedProposalOccurrences: readonly ProposalOccurrencePair[];
   readonly addedProposalOccurrences: readonly ExtractionProposal[];
@@ -82,6 +113,27 @@ export interface ProposalSetFacts {
   readonly addedProposalEvidence?: readonly ProposalEvidence[];
   /** Exact observation-anchored evidence for every removed proposal occurrence. */
   readonly removedProposalEvidence?: readonly ProposalEvidence[];
+  /** Retained fields whose confidence appeared or disappeared. */
+  readonly confidenceChanges?: readonly ConfidenceChangeFact[];
+  /**
+   * Current proposal occurrences missing from an incomplete prior observation.
+   * The prior may have held them in text it never read, so they are not in the
+   * added facts and raise no event.
+   */
+  readonly newlyObservedProposalOccurrences?: readonly ExtractionProposal[];
+  /** Exact observation-anchored evidence for every newly observed proposal occurrence. */
+  readonly newlyObservedProposalEvidence?: readonly ProposalEvidence[];
+  /** Current entities missing from an incomplete prior observation. */
+  readonly newlyObservedEntities?: readonly string[];
+  /**
+   * Prior proposal occurrences missing from an incomplete current observation.
+   * Whether they were removed is unknown, so they are not in the removed facts.
+   */
+  readonly unobservedProposalOccurrences?: readonly ExtractionProposal[];
+  /** Exact observation-anchored evidence for every unobserved proposal occurrence. */
+  readonly unobservedProposalEvidence?: readonly ProposalEvidence[];
+  /** Prior entities missing from an incomplete current observation. */
+  readonly unobservedEntities?: readonly string[];
 }
 
 export interface ProposalSetDiff {
@@ -149,7 +201,7 @@ function evidence(
     entityKey,
     fieldKey,
     value: proposal.candidateValue,
-    confidence: proposal.confidence,
+    ...(proposal.confidence === undefined ? {} : { confidence: proposal.confidence }),
     provenance: proposal.provenance,
     extractor: proposal.extractor,
     fieldPath: proposal.fieldPath,
@@ -217,6 +269,19 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
   const removedEntities: string[] = [];
   const addedProposalEvidence: ProposalEvidence[] = [];
   const removedProposalEvidence: ProposalEvidence[] = [];
+  const confidenceChanges: ConfidenceChangeFact[] = [];
+  const unobservedProposalOccurrences: ExtractionProposal[] = [];
+  const unobservedProposalEvidence: ProposalEvidence[] = [];
+  const unobservedEntities: string[] = [];
+  // Text the current extraction never read may still hold what the prior saw,
+  // so nothing the prior had can be called removed.
+  const currentIncomplete = input.current.incomplete !== undefined;
+  // Symmetrically, what the current run has that an incomplete prior lacks may
+  // have been in the prior's unread text, so it is not called added.
+  const priorIncomplete = input.prior.incomplete !== undefined;
+  const newlyObservedProposalOccurrences: ExtractionProposal[] = [];
+  const newlyObservedProposalEvidence: ProposalEvidence[] = [];
+  const newlyObservedEntities: string[] = [];
 
   for (const pair of entities.value.retained) {
     const entityKeyResult = identity("entityIdentity", () => input.entityIdentity(pair.prior));
@@ -232,17 +297,17 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
     });
     if (!occurrences.ok) return occurrences;
     retainedProposalOccurrences.push(...occurrences.value.retained);
-    addedProposalOccurrences.push(...occurrences.value.additions);
-    removedProposalOccurrences.push(...occurrences.value.removals);
+    (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(...occurrences.value.additions);
+    (currentIncomplete ? unobservedProposalOccurrences : removedProposalOccurrences).push(...occurrences.value.removals);
     for (const proposal of occurrences.value.additions) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.current, proposal));
       if (!fieldKey.ok) return fieldKey;
-      addedProposalEvidence.push(evidence(input.current, entityKey, fieldKey.value, proposal));
+      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKey, fieldKey.value, proposal));
     }
     for (const proposal of occurrences.value.removals) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(pair.prior, proposal));
       if (!fieldKey.ok) return fieldKey;
-      removedProposalEvidence.push(evidence(input.prior, entityKey, fieldKey.value, proposal));
+      (currentIncomplete ? unobservedProposalEvidence : removedProposalEvidence).push(evidence(input.prior, entityKey, fieldKey.value, proposal));
     }
 
     const priorFields = semanticFieldOrder(priorProposals.value.map((proposal) => ({ entity: pair.prior, proposal })), ({ entity, proposal }) => input.fieldIdentity(entity, proposal));
@@ -267,6 +332,9 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       if (comparison.value.provenanceChanged) {
         provenanceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
       }
+      if ((field.prior.proposal.confidence === undefined) !== (field.current.proposal.confidence === undefined)) {
+        confidenceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
+      }
       if (comparison.value.valueChanged) {
         const kind = changeKind(field.prior.proposal.candidateValue, field.current.proposal.candidateValue);
         if (!kind.ok) return kind;
@@ -274,6 +342,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       }
     }
     for (const field of fields.value.additions) {
+      if (priorIncomplete) continue;
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(field.entity, field.proposal));
       if (!fieldKey.ok) return fieldKey;
       events.push({
@@ -285,6 +354,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       });
     }
     for (const field of fields.value.removals) {
+      if (currentIncomplete) continue;
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(field.entity, field.proposal));
       if (!fieldKey.ok) return fieldKey;
       events.push({
@@ -307,23 +377,24 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(entity, proposal));
       if (!fieldKey.ok) return fieldKey;
       current.push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      addedProposalEvidence.push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
-      addedProposalOccurrences.push(proposal);
+      (priorIncomplete ? newlyObservedProposalEvidence : addedProposalEvidence).push(evidence(input.current, entityKeyResult.value, fieldKey.value, proposal));
+      (priorIncomplete ? newlyObservedProposalOccurrences : addedProposalOccurrences).push(proposal);
     }
-    events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
+    if (priorIncomplete) newlyObservedEntities.push(entityKeyResult.value);
+    else events.push({ kind: "new-entity-appeared", entityKey: entityKeyResult.value, current });
   }
 
   for (const entity of entities.value.removals) {
     const entityKeyResult = identity("entityIdentity", () => input.entityIdentity(entity));
     if (!entityKeyResult.ok) return entityKeyResult;
-    removedEntities.push(entityKeyResult.value);
+    (currentIncomplete ? unobservedEntities : removedEntities).push(entityKeyResult.value);
     const proposals = invoke("proposalsFor", () => input.proposalsFor(entity));
     if (!proposals.ok) return proposals;
-    removedProposalOccurrences.push(...proposals.value);
+    (currentIncomplete ? unobservedProposalOccurrences : removedProposalOccurrences).push(...proposals.value);
     for (const proposal of proposals.value) {
       const fieldKey = identity("fieldIdentity", () => input.fieldIdentity(entity, proposal));
       if (!fieldKey.ok) return fieldKey;
-      removedProposalEvidence.push(evidence(input.prior, entityKeyResult.value, fieldKey.value, proposal));
+      (currentIncomplete ? unobservedProposalEvidence : removedProposalEvidence).push(evidence(input.prior, entityKeyResult.value, fieldKey.value, proposal));
     }
   }
 
@@ -331,7 +402,11 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
     ok: true,
     value: {
       events,
-      facts: { retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence },
+      facts: {
+        retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence, confidenceChanges,
+        ...(priorIncomplete ? { newlyObservedProposalOccurrences, newlyObservedProposalEvidence, newlyObservedEntities } : {}),
+        ...(currentIncomplete ? { unobservedProposalOccurrences, unobservedProposalEvidence, unobservedEntities } : {}),
+      },
     },
   };
 }
