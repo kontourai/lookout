@@ -63,8 +63,8 @@ describe("an incomplete prior that read a field that later moved", () => {
     assert.equal(result.value.facts.newlyObservedProposalEvidence?.[0]?.fieldPath, "owner");
   });
 
-  test("a re-valued field the prior read yields the same work as against a complete prior", () => {
-    const current = observation("snapshot-2", [at("status", "Closed", 0)]);
+  test("a field the prior read, moved and re-valued, yields the same work as against a complete prior", () => {
+    const current = observation("snapshot-2", [at("status", "Closed", 12)]);
     const complete = items(project(observation("snapshot-1", prior.proposals), current));
     assert.ok(complete.length > 0);
     assert.ok(complete.every((item) => item.kind !== "proposal-newly-observed"));
