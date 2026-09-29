@@ -15,15 +15,15 @@ importers:
         specifier: 1.0.0
         version: 1.0.0
       '@kontourai/traverse':
-        specifier: 3.0.0
-        version: 3.0.0(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)
+        specifier: 3.0.1
+        version: 3.0.1(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)
     devDependencies:
       '@kontourai/flow-agents':
         specifier: 6.4.0
         version: 6.4.0(@ai-sdk/provider@4.0.4)(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)(typescript@7.0.2)(zod@4.4.3)
       '@kontourai/survey':
-        specifier: 6.1.0
-        version: 6.1.0(typescript@7.0.2)
+        specifier: 8.0.0
+        version: 8.0.0(typescript@7.0.2)
       '@types/node':
         specifier: ^26.1.2
         version: 26.1.2
@@ -326,8 +326,8 @@ packages:
       typescript:
         optional: true
 
-  '@kontourai/survey@6.1.0':
-    resolution: {integrity: sha512-6/+vJ0rOwj5be/ELN+NTuhRzK6rhvGvbD/XzoppsCRkfaLRt2ATZ8v5eEX/vMgCW2G/Ql/9dp78NAjiYTldcxA==}
+  '@kontourai/survey@8.0.0':
+    resolution: {integrity: sha512-4cs94lxDoB+FQ34n1mP5I96/glVFF0GVDJ2o34thQ3HGL2d+xGmcn+4x48RdM59eH1prApbsOsOccyEuFZ+Udw==}
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
@@ -336,8 +336,8 @@ packages:
       typescript:
         optional: true
 
-  '@kontourai/traverse@3.0.0':
-    resolution: {integrity: sha512-TdHdkO3cjLU8gmDG4n1vin950DjBvNqap7bbw90PtpwV4DPs0jhLX341qg+MZUW2+ly9Eb67XK0yao3igRU4KQ==}
+  '@kontourai/traverse@3.0.1':
+    resolution: {integrity: sha512-jXgp+ZNuAPpEZ1ArBAhEtF4I2MmCKvc+4ztrcQfPsjcWMiAmk25iRWe0h88jx9pOjeeNiBJPC8LhbtCES+u/Wg==}
     engines: {node: '>=22'}
     peerDependencies:
       '@anthropic-ai/sdk': '>=0.20.0'
@@ -865,9 +865,6 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  zod@4.2.0:
-    resolution: {integrity: sha512-Bd5fw9wlIhtqCCxotZgdTOMwGm1a0u75wARVEY9HMs1X17trvA/lMi4+MGK5EUfYkXVTbX8UDiDKW4OgzHVUZw==}
-
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -1072,7 +1069,7 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/survey@6.1.0(typescript@7.0.2)':
+  '@kontourai/survey@8.0.0(typescript@7.0.2)':
     dependencies:
       '@kontourai/surface': 2.17.0
       '@modelcontextprotocol/server': 2.0.0
@@ -1083,7 +1080,7 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/traverse@3.0.0(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)':
+  '@kontourai/traverse@3.0.1(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)':
     dependencies:
       '@kontourai/forage': 0.5.1
       linkedom: 0.18.13
@@ -1100,12 +1097,12 @@ snapshots:
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.2.0
+      zod: 4.4.3
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.2.0
+      zod: 4.4.3
 
   '@npmcli/agent@5.0.2':
     dependencies:
@@ -1654,7 +1651,5 @@ snapshots:
     optional: true
 
   yaml@2.9.0: {}
-
-  zod@4.2.0: {}
 
   zod@4.4.3: {}
