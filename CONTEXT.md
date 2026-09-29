@@ -86,7 +86,12 @@ results rather than throwing.
   incomplete run whose loss might not recur never replaces an existing baseline
   (`committedObservation: null`); one whose every loss recurs (a cap), or a
   first observation, is stored with its marker, and what a later run adds
-  against it is `newlyObserved`, not added. Registry kind
+  against it is `newlyObserved`, not added, unless the emitter's optional
+  `priorText` preparation rebuilds and verifies the prior's full prepared text
+  and none of the entity's exact excerpts occur in it (**Prior Text
+  Anchoring**); the fact's `priorText` says whether that text was `verified` or
+  why it was `unavailable`. Newly observed proposals are reviewable as
+  `proposal-newly-observed` semantic review work. Registry kind
   supplies fact `origin`; resolution is always `observation`. First observation
   produces a `baseline-established` fact, no events, and a null
   `priorObservationId`.

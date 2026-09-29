@@ -64,6 +64,7 @@ export type {
   FieldChangedEvent,
   FieldChangeKind,
   NewEntityAppearedEvent,
+  NewlyObservedEntityAnchor,
   ProposalDiffEvent,
   ProposalEvidence,
   ProposalIdentity,
@@ -75,10 +76,11 @@ export type {
   ProposalSetObservation,
   ProvenanceChangeFact,
 } from "./proposal-diff.js";
+export type { PriorTextAnchor } from "./prior-text-anchor.js";
 export { createObservationStore } from "./observation-store.js";
 export type { CreateObservationStoreOptions, HeadWitnessComparison, ObservationCheckAnchor, ObservationStore, ObservationStoreError, ObservationStoreErrorKind, ObservationStoreResult, ProposalHeadWitnessV1, ProposalObservationRecordInput, StoredProposalObservation, StoredProposalObservationV1, StoredProposalObservationV2, VerifiedHeadLimits, VerifiedHeadObservationStore, VerifiedHeadRead } from "./observation-store.js";
 export { createDriftEmitter } from "./drift-emission.js";
-export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput } from "./drift-emission.js";
+export type { BaselineEstablishedFact, CreateDriftEmitterOptions, DriftEmitter, DriftError, DriftErrorKind, DriftFact, DriftResult, DriftSuccess, EmitDriftInput, PriorTextPreparation, PriorTextStatus, PriorTextUnavailableReason } from "./drift-emission.js";
 export { checkSchemaCoverage } from "./coverage.js";
 export type { SchemaCoverageGap, SchemaCoverageResult } from "./coverage.js";
 export { createObserveExtractDiff, extractedSnapshotRef } from "./observe-extract-diff.js";

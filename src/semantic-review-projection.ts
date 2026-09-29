@@ -35,6 +35,10 @@ export function collectSemanticChanges(input: { prior: ProposalSetObservation; c
   const representedCurrent = changes.flatMap((change) => change.current ? [change.current] : []);
   for (const prior of diff.facts.removedProposalEvidence ?? []) if (!diff.facts.provenanceChanges.some((item) => sameEvidence(item.prior, prior)) && !representedPrior.some((item) => sameEvidence(item, prior))) changes.push({ kind: "proposal-removed", fieldPath: prior.fieldPath, entityKey: prior.entityKey, prior });
   for (const current of diff.facts.addedProposalEvidence ?? []) if (!diff.facts.provenanceChanges.some((item) => sameEvidence(item.current, current)) && !representedCurrent.some((item) => sameEvidence(item, current))) changes.push({ kind: addedKind(current), fieldPath: current.fieldPath, entityKey: current.entityKey, current });
+  // Against an incomplete prior, what the current run has that the prior
+  // lacked may be new or may have sat in text the prior never read. Nothing
+  // decides which, so a reviewer does.
+  for (const current of diff.facts.newlyObservedProposalEvidence ?? []) changes.push({ kind: "proposal-newly-observed", fieldPath: current.fieldPath, entityKey: current.entityKey, current });
   for (const change of diff.facts.provenanceChanges) {
     const kind = incomplete(change.current) && !incomplete(change.prior) ? "provenance-gap" : change.prior.provenance.locator !== change.current.provenance.locator ? "proposal-moved" : "proposal-provenance-changed";
     changes.push({ kind, fieldPath: change.current.fieldPath, entityKey: change.entityKey, prior: change.prior, current: change.current });

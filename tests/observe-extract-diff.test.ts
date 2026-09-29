@@ -89,6 +89,8 @@ test("a changed source retains the snapshot, prepared artifact, proposal set, an
   assert.equal(first.value.outcome, "completed");
   assert.equal(first.value.preparedArtifact?.ref, artifact.ref);
   assert.equal(first.value.proposalSet?.snapshotRef, "snapshot-current");
+  // The prepared artifact travels with the proposal set, so a drift emitter can verify re-prepared prior text.
+  assert.deepEqual(first.value.proposalSet?.preparedArtifact, artifact);
   assert.deepEqual(first.value.sourceSnapshot, { priorSnapshotRef: "snapshot-prior", currentSnapshotRef: "snapshot-current" });
   assert.equal(first.value.priorObservationId, null);
   assert.equal(first.value.proposalSet?.proposals.length, 1);

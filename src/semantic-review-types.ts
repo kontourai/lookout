@@ -5,7 +5,9 @@ import type { ProposalEvidence, ProposalSetDiffInput, ProposalSetObservation } f
 export const semanticReviewApiVersion = "survey.kontourai.io/v1alpha1";
 
 export type SemanticReviewKind = "proposal-added" | "proposal-removed" | "proposal-moved" |
-  "proposal-provenance-changed" | "proposal-value-changed" | "coverage-gap" | "provenance-gap";
+  "proposal-provenance-changed" | "proposal-value-changed" | "coverage-gap" | "provenance-gap" |
+  /** A proposal an incomplete prior lacked: added, or in text the prior never read. */
+  "proposal-newly-observed";
 export interface SemanticObservationIdentity { readonly prior: string; readonly current: string }
 export interface SemanticClaimTarget {
   readonly subjectType: string; readonly subjectId: string; readonly facet: string;

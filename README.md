@@ -457,7 +457,52 @@ the provider-call ceiling) and a first observation are stored with their
 marker, so a page that stays capped reports each change once. What a later run
 has that an incomplete baseline lacked is listed under `newlyObserved*` facts
 rather than as additions or events; a value removed from text the cap hid is
-not reported. A proposal's
+not reported.
+
+Coverage ranges and locators are offsets into each capture's own prepared text,
+so an insertion earlier in the page shifts them and offsets cannot tell a new
+entity from one that moved into the read window. To report added entities on a
+page that stays capped, give `createDriftEmitter` a `priorText` preparation:
+
+```ts
+const emitter = createDriftEmitter({
+  store,
+  snapshotStore,
+  priorText: {
+    // Prepare a stored capture exactly as your extraction did. No provider call.
+    prepare: ({ snapshot, preparedArtifact }) => prepareText(snapshot, preparedArtifact.preparationMode),
+    maxChars: 4_000_000, // default; larger priors are not rebuilt
+    timeoutMs: 30_000, // default; a slower prepare is abandoned
+  },
+});
+```
+
+Against an incomplete prior, the emitter reads the prior's snapshot from the
+snapshot store, has the caller re-prepare it, and verifies the text against the
+prior's stored prepared-artifact digest. A current entity none of whose exact
+excerpts occur anywhere in that text was not in the prior's capture, so it
+raises `new-entity-appeared`. An entity with an excerpt in text the prior read
+is a proposer difference, and one with an excerpt only in text the prior never
+read (for example shifted into the read window) is still newly observed;
+`newlyObservedEntityAnchors` says which. An excerpt that is empty or was not
+placed by Traverse's exact occurrence resolver is `unanchorable`. The fact's
+`priorText` is `verified`; `not-needed` when no entity needed anchoring, in
+which case the prior's snapshot is not read at all; or `unavailable` with a
+reason (`not-configured`, `no-prepared-artifact`, `preparation-changed`,
+`too-large`, `snapshot-unresolved`, `preparation-failed`,
+`preparation-timeout`, `text-mismatch`), and then every entity the prior lacks
+stays newly observed. `maxChars` is checked against the prior's prepared-text
+length before any read, but a snapshot store cannot report a body's size before
+returning it, so the body-length check bounds preparation, not the snapshot
+read. A `prepare` that exceeds `timeoutMs` is abandoned, not cancelled. The prior needs its `preparedArtifact`,
+which `createObserveExtractDiff` puts on each proposal set. Limits: an entity
+the prior never read whose every excerpt also changed is reported as new; a
+short excerpt that happens to occur elsewhere keeps a real addition newly
+observed; and a field added to an entity the prior already had stays newly
+observed. Treat `newlyObserved*` as reviewable: `buildSemanticReviewWork` turns
+each newly observed proposal into `proposal-newly-observed` review work.
+
+A proposal's
 `confidence` is optional: when absent it stays absent in stored observations,
 diff evidence, and review candidates, and a retained field whose confidence
 appeared or disappeared is listed in `confidenceChanges` (a fact, not an event;
@@ -502,6 +547,10 @@ const work = buildSemanticReviewWork({
 ```
 
 Added, removed, moved, provenance-changed, and value-changed proposals become distinct work items.
+A proposal an incomplete prior lacked (`newlyObserved*`) becomes
+`proposal-newly-observed` work: it may be new, or may have sat in text the
+prior never read. Pass `priorPreparedText` (the prior's verified full prepared
+text) to report an entity whose text is absent from it as added instead.
 New coverage or exact-provenance gaps are also reviewable. Each available side
 retains its exact snapshot reference, observation time, locator, excerpt, and
 extractor. An absent side is explicit and anchored to the corresponding

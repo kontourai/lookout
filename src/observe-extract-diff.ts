@@ -230,6 +230,7 @@ export function createObserveExtractDiff(options: ObserveExtractDiffOptions): Ob
         observedAt: extraction.extractedAt,
         proposals: extraction.proposals,
         ...(incomplete === null ? {} : { incomplete }),
+        ...(extraction.preparedArtifact === undefined ? {} : { preparedArtifact: extraction.preparedArtifact }),
       };
       if (outcome !== "extraction-failure") {
         if (extraction.preparedArtifact === undefined) {
