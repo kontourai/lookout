@@ -125,7 +125,8 @@ export interface ProposalSetFacts {
   /**
    * Current proposal occurrences missing from an incomplete prior observation.
    * The prior may have held them in text it never read, so they are not in the
-   * added facts and raise no event.
+   * added facts and raise no event. An occurrence of a field the prior did
+   * read (moved or re-valued) is not listed here; it is an added occurrence.
    */
   readonly newlyObservedProposalOccurrences?: readonly ExtractionProposal[];
   /** Exact observation-anchored evidence for every newly observed proposal occurrence. */
