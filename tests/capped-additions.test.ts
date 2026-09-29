@@ -69,7 +69,7 @@ const textPreparation: PriorTextPreparation = {
 };
 
 async function harness(run: (h: {
-  capture(label: string, second: number, text: string, proposed: readonly string[], options?: { complete?: boolean; preparationVersion?: string }): Promise<ProposalSetObservation>;
+  capture(label: string, second: number, text: string, proposed: readonly string[], options?: { complete?: boolean; preparationVersion?: string; bodyPrefix?: string }): Promise<ProposalSetObservation>;
   root: string;
   snapshots: ReturnType<typeof createLookoutSnapshotStore>;
 }) => Promise<void>): Promise<void> {
@@ -80,7 +80,8 @@ async function harness(run: (h: {
       root,
       snapshots,
       async capture(label, second, text, proposed, options = {}) {
-        const snapshot: Snapshot = { sourceId: "source-a", url: "https://example.test/source-a", status: 200, fetchedAt: `2026-07-10T12:02:${String(second).padStart(2, "0")}.000Z`, body: text, bodyHash: createHash("sha256").update(text).digest("hex") };
+        const body = (options.bodyPrefix ?? "") + text;
+        const snapshot: Snapshot = { sourceId: "source-a", url: "https://example.test/source-a", status: 200, fetchedAt: `2026-07-10T12:02:${String(second).padStart(2, "0")}.000Z`, body, bodyHash: createHash("sha256").update(body).digest("hex") };
         await snapshots.put(snapshot);
         const snapshotRef = buildSnapshotSourceRef(snapshot);
         return {
@@ -175,9 +176,11 @@ describe("a page that stays capped, through the real stores and emitter", () => 
     ["preparation that throws", () => ({ priorText: { prepare: () => { throw new Error("boom"); } } }), {}, "preparation-failed"],
     ["a prior larger than the bound", () => ({ priorText: { ...textPreparation, maxChars: 59 } }), {}, "too-large"],
     ["a current run prepared another way", () => ({ priorText: textPreparation }), { preparationVersion: "other" }, "preparation-changed"],
+    ["preparation that never settles", () => ({ priorText: { prepare: () => new Promise<string>(() => {}), timeoutMs: 20 } }), {}, "preparation-timeout"],
+    ["preparation that returns no text", () => ({ priorText: { prepare: () => 42 as unknown as string } }), {}, "preparation-failed"],
   ];
   for (const [label, configure, currentOptions, reason] of unavailable) {
-    test(`${label}: the new entity stays newly observed, marked ${reason}`, async () => {
+    test(`${label}: the new entity stays newly observed, marked ${reason}`, { timeout: 5000 }, async () => {
       await harness(async ({ root, snapshots, capture }) => {
         const emitter = createDriftEmitter<Entity>({ store: createObservationStore({ root: path.join(root, "observations") }), snapshotStore: snapshots, ...configure({ snapshots }) });
         const a = await capture("a", 1, page("Alpha", "Beta", "Gamma"), ["Alpha", "Beta"]);
@@ -193,6 +196,70 @@ describe("a page that stays capped, through the real stores and emitter", () => 
       });
     });
   }
+
+  test("an entity that kept one excerpt of the prior's text stays a fact, even with another excerpt new", async () => {
+    // Entities of two proposals: the name and a tag, grouped by pathIndices.
+    const grouped = {
+      selectEntities: (input: ProposalSetObservation): readonly Entity[] => {
+        const byIndex = new Map<number, ExtractionProposal[]>();
+        for (const item of input.proposals) { const i = item.pathIndices?.[0] ?? -1; byIndex.set(i, [...(byIndex.get(i) ?? []), item]); }
+        return [...byIndex.values()].map((proposals) => ({ key: String(proposals.find((item) => item.fieldPath === "name")?.candidateValue), proposals }));
+      },
+      entityIdentity: (entity: Entity) => entity.key,
+      proposalsFor: (entity: Entity) => entity.proposals,
+      fieldIdentity: (_entity: Entity, item: ExtractionProposal) => item.fieldPath,
+    };
+    const indexed = (observation: ProposalSetObservation, text: string, entities: readonly (readonly [string, string])[]): ProposalSetObservation => ({
+      ...observation,
+      proposals: entities.flatMap(([name, tag], i) => [{ ...proposalIn(text, name), pathIndices: [i] }, { ...proposalIn(text, tag), fieldPath: "tag", pathIndices: [i] }]),
+    });
+    await harness(async ({ root, snapshots, capture }) => {
+      const emitter = createDriftEmitter<Entity>({ store: createObservationStore({ root: path.join(root, "observations") }), snapshotStore: snapshots, priorText: textPreparation });
+      const aText = page("Alpha", "Beta", "Gamma");
+      const a = indexed(await capture("a", 1, aText, []), aText, [["Alpha", "Alpha"]]);
+      assert.equal((await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks: grouped })).ok, true);
+      // Renamed Delta, but its tag Gamma was already in the prior's (unread) text.
+      const bText = page("Alpha", "Delta", "Gamma");
+      const b = indexed(await capture("b", 2, bText, []), bText, [["Alpha", "Alpha"], ["Delta", "Gamma"]]);
+      const result = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks: grouped });
+      assert.equal(result.ok, true); if (!result.ok) return;
+      assert.deepEqual(result.value.events.filter((event) => event.kind === "new-entity-appeared"), []);
+      const fact = factOf(result.value.facts);
+      assert.deepEqual(fact.priorText, { status: "verified" });
+      assert.deepEqual(fact.value.newlyObservedEntityAnchors, [{ entityKey: "Delta", anchor: "prior-unread-text" }]);
+    });
+  });
+
+  test("a snapshot body over the bound is not prepared, even when its prepared text is within it", async () => {
+    await harness(async ({ root, snapshots, capture }) => {
+      const prefix = "<!-- wrapper -->";
+      let prepared = 0;
+      const emitter = createDriftEmitter<Entity>({ store: createObservationStore({ root: path.join(root, "observations") }), snapshotStore: snapshots, priorText: { maxChars: 60, prepare: ({ snapshot }) => { prepared += 1; return String(snapshot.body).slice(prefix.length); } } });
+      const a = await capture("a", 1, page("Alpha", "Beta", "Gamma"), ["Alpha", "Beta"], { bodyPrefix: prefix });
+      assert.equal(a.preparedArtifact?.contentLength, 60);
+      assert.equal((await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks })).ok, true);
+      const b = await capture("b", 2, page("Alpha", "Delta", "Beta", "Gamma"), ["Alpha", "Delta"]);
+      const result = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks });
+      assert.equal(result.ok, true); if (!result.ok) return;
+      assert.deepEqual(result.value.events, []);
+      assert.deepEqual(factOf(result.value.facts).priorText, { status: "unavailable", reason: "too-large" });
+      assert.equal(prepared, 0);
+    });
+  });
+
+  test("with no new entity to anchor, the prior's text is not rebuilt", async () => {
+    await harness(async ({ root, snapshots, capture }) => {
+      let prepared = 0;
+      const emitter = createDriftEmitter<Entity>({ store: createObservationStore({ root: path.join(root, "observations") }), snapshotStore: snapshots, priorText: { prepare: (input) => { prepared += 1; return textPreparation.prepare(input); } } });
+      const a = await capture("a", 1, page("Alpha", "Beta", "Gamma"), ["Alpha", "Beta"]);
+      assert.equal((await emitter.emit({ source: source(), current: a, check: anchor(a), callbacks })).ok, true);
+      const b = await capture("b", 2, page("Alpha", "Beta", "Gamma", "Omega"), ["Alpha", "Beta"]);
+      const result = await emitter.emit({ source: source(), current: b, check: anchor(b), callbacks });
+      assert.equal(result.ok, true); if (!result.ok) return;
+      assert.deepEqual(factOf(result.value.facts).priorText, { status: "not-needed" });
+      assert.equal(prepared, 0);
+    });
+  });
 
   test("a prior stored without a prepared artifact is marked, and a complete prior needs no text", async () => {
     await harness(async ({ root, snapshots, capture }) => {

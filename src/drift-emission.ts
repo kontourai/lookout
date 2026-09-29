@@ -59,6 +59,8 @@ export type DriftFact =
  */
 export type PriorTextStatus =
   | { readonly status: "verified" }
+  /** Nothing the prior lacked needed anchoring, so the prior's text was not read. */
+  | { readonly status: "not-needed" }
   | { readonly status: "unavailable"; readonly reason: PriorTextUnavailableReason };
 export type PriorTextUnavailableReason =
   /** The emitter was created without `priorText`. */
@@ -73,6 +75,8 @@ export type PriorTextUnavailableReason =
   | "snapshot-unresolved"
   /** The caller's preparation threw or returned something other than text. */
   | "preparation-failed"
+  /** The caller's preparation did not settle within `priorText.timeoutMs`. */
+  | "preparation-timeout"
   /** The rebuilt text does not match the prior's prepared-artifact digest. */
   | "text-mismatch";
 
@@ -86,9 +90,19 @@ export interface PriorTextPreparation {
   prepare(input: { readonly snapshot: Snapshot; readonly preparedArtifact: PreparedArtifact }): string | Promise<string>;
   /**
    * Largest prior prepared text and snapshot body, in UTF-16 code units or
-   * bytes, that is read. Larger ones are `too-large`. Default 4,000,000.
+   * bytes, that is prepared. Larger ones are `too-large`. Default 4,000,000.
+   * The prepared-text length is checked before any read; the body length only
+   * after the snapshot store has returned the whole body, because a snapshot
+   * store cannot report a size first (the emitter's snapshot admission reads
+   * the same body anyway). It bounds preparation, not that read.
    */
   readonly maxChars?: number;
+  /**
+   * How long `prepare` may take, in milliseconds, before the rebuild is
+   * abandoned as `preparation-timeout`. Default 30,000. The call itself is
+   * not cancelled; its eventual result is ignored.
+   */
+  readonly timeoutMs?: number;
 }
 export interface DriftSuccess {
   readonly sourceId: string;
@@ -206,9 +220,20 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
           try {
             // Diff callbacks receive their own clone, never the image used for
             // durable commit below.
-            const anchored = prior.incomplete === undefined ? null : await rebuildPriorText(prior, invocation.current, options);
-            priorText = anchored === null ? undefined : "text" in anchored ? { status: "verified" } : { status: "unavailable", reason: anchored.reason };
-            derived = diff({ prior: { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, proposals: capture(prior.proposals) ?? [], ...incompleteness(prior) }, current: capture(invocation.current)!, ...invocation.callbacks, ...(anchored !== null && "text" in anchored ? { priorPreparedText: anchored.text } : {}) });
+            const priorImage = { sourceId: prior.sourceId, snapshotRef: prior.snapshotRef, observedAt: prior.observedAt, ...incompleteness(prior) };
+            derived = diff({ prior: { ...priorImage, proposals: capture(prior.proposals) ?? [] }, current: capture(invocation.current)!, ...invocation.callbacks });
+            if (prior.incomplete !== undefined && derived.ok) {
+              // The prior's text is only rebuilt when there is a new entity to
+              // anchor; a capped page with nothing new costs no snapshot read.
+              if ((derived.value.facts.newlyObservedEntities ?? []).length === 0) priorText = { status: "not-needed" };
+              else {
+                const anchored = await rebuildPriorText(prior, invocation.current, options);
+                if ("text" in anchored) {
+                  priorText = { status: "verified" };
+                  derived = diff({ prior: { ...priorImage, proposals: capture(prior.proposals) ?? [] }, current: capture(invocation.current)!, ...invocation.callbacks, priorPreparedText: anchored.text });
+                } else priorText = { status: "unavailable", reason: anchored.reason };
+              }
+            }
           } catch (cause) {
             return { ok: false, error: { kind: "diff-error", message: "Proposal diff threw", cause } };
           }
@@ -242,6 +267,7 @@ export function createDriftEmitter<E>(options: CreateDriftEmitterOptions<E>): Dr
 }
 
 const DEFAULT_PRIOR_TEXT_MAX_CHARS = 4_000_000;
+const DEFAULT_PRIOR_TEXT_TIMEOUT_MS = 30_000;
 
 /**
  * The incomplete prior's full prepared text, re-prepared from its snapshot and
@@ -260,8 +286,14 @@ async function rebuildPriorText<E>(prior: StoredProposalObservation, current: Pr
   if (!resolved.ok) return { reason: "snapshot-unresolved" };
   if (resolved.snapshot.body.length > max) return { reason: "too-large" };
   let text: unknown;
-  try { text = await preparation.prepare({ snapshot: resolved.snapshot, preparedArtifact: structuredClone(artifact) }); }
-  catch { return { reason: "preparation-failed" }; }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = Symbol("timed-out");
+  try {
+    const expiry = new Promise<typeof timedOut>((resolve) => { timer = setTimeout(() => resolve(timedOut), preparation.timeoutMs ?? DEFAULT_PRIOR_TEXT_TIMEOUT_MS); });
+    text = await Promise.race([Promise.resolve().then(() => preparation.prepare({ snapshot: resolved.snapshot, preparedArtifact: structuredClone(artifact) })), expiry]);
+  } catch { return { reason: "preparation-failed" }; }
+  finally { clearTimeout(timer); }
+  if (text === timedOut) return { reason: "preparation-timeout" };
   if (typeof text !== "string") return { reason: "preparation-failed" };
   const verified = await resolvePreparedArtifact(artifact, { get: () => text as string });
   return verified.status === "available" ? { text: verified.text } : { reason: "text-mismatch" };

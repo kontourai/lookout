@@ -472,6 +472,7 @@ const emitter = createDriftEmitter({
     // Prepare a stored capture exactly as your extraction did. No provider call.
     prepare: ({ snapshot, preparedArtifact }) => prepareText(snapshot, preparedArtifact.preparationMode),
     maxChars: 4_000_000, // default; larger priors are not rebuilt
+    timeoutMs: 30_000, // default; a slower prepare is abandoned
   },
 });
 ```
@@ -485,10 +486,15 @@ is a proposer difference, and one with an excerpt only in text the prior never
 read (for example shifted into the read window) is still newly observed;
 `newlyObservedEntityAnchors` says which. An excerpt that is empty or was not
 placed by Traverse's exact occurrence resolver is `unanchorable`. The fact's
-`priorText` is `verified`, or `unavailable` with a reason (`not-configured`,
-`no-prepared-artifact`, `preparation-changed`, `too-large`,
-`snapshot-unresolved`, `preparation-failed`, `text-mismatch`); then every entity
-the prior lacks stays newly observed. The prior needs its `preparedArtifact`,
+`priorText` is `verified`; `not-needed` when no entity needed anchoring, in
+which case the prior's snapshot is not read at all; or `unavailable` with a
+reason (`not-configured`, `no-prepared-artifact`, `preparation-changed`,
+`too-large`, `snapshot-unresolved`, `preparation-failed`,
+`preparation-timeout`, `text-mismatch`), and then every entity the prior lacks
+stays newly observed. `maxChars` is checked against the prior's prepared-text
+length before any read, but a snapshot store cannot report a body's size before
+returning it, so the body-length check bounds preparation, not the snapshot
+read. A `prepare` that exceeds `timeoutMs` is abandoned, not cancelled. The prior needs its `preparedArtifact`,
 which `createObserveExtractDiff` puts on each proposal set. Limits: an entity
 the prior never read whose every excerpt also changed is reported as new; a
 short excerpt that happens to occur elsewhere keeps a real addition newly
