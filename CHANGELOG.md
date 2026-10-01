@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6](https://github.com/kontourai/lookout/compare/v0.8.5...v0.8.6) (2026-10-01)
+
+
+### Fixes
+
+* **deps:** traverse 4.1.0, forage 1.0.1; keep in-process valueNormalization out of stored observations ([#109](https://github.com/kontourai/lookout/issues/109)) ([3f00b5d](https://github.com/kontourai/lookout/commit/3f00b5d0fc68f2ec35f9cd9ec5d6b63e3967dc91)), closes [#108](https://github.com/kontourai/lookout/issues/108)
+
 ## [0.8.5](https://github.com/kontourai/lookout/compare/v0.8.4...v0.8.5) (2026-10-01)
 
 
