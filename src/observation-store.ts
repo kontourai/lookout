@@ -257,7 +257,7 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
   if (!check || check.currentSnapshotRef !== observation.snapshotRef || typeof check.checkedAt !== "string" || (check.resultKind !== "changed" && check.resultKind !== "unchanged-hash") || typeof input.recordedAt !== "string") {
     return { ok: false, error: { kind: "invalid-input", message: "Check anchor must match the current observation snapshot" } };
   }
-  const proposals = [...observation.proposals].sort((a, b) => compareCodeUnits(canonical(a), canonical(b)));
+  const proposals = observation.proposals.map(storedProposal).sort((a, b) => compareCodeUnits(canonical(a), canonical(b)));
   if (observation.incomplete !== undefined && !validIncompleteness(observation.incomplete)) {
     return { ok: false, error: { kind: "invalid-input", message: "Current proposal observation incompleteness is malformed" } };
   }
@@ -274,6 +274,18 @@ function buildRecord(input: ProposalObservationRecordInput): ObservationStoreRes
 function validStoredArtifact(value: unknown, snapshotRef: string): boolean {
   const checked = validatePreparedArtifact(value);
   return checked.status === "valid" && checked.artifact.sourceSnapshotRef === snapshotRef;
+}
+
+/**
+ * The proposal as stored and digested. Traverse records `valueNormalization`
+ * on in-process proposals only (how the provider spelled a value it rewrote);
+ * its portable envelope does not carry it. Dropping it here gives a typed
+ * answer and a rewritten answer of the same value the same observationId.
+ * Applied on write only: a stored record is verified over the bytes it has.
+ */
+function storedProposal(proposal: ExtractionProposal): ExtractionProposal {
+  const { valueNormalization: _inProcessOnly, ...stored } = proposal;
+  return stored;
 }
 
 function validProposal(value: unknown): value is ExtractionProposal {
