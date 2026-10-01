@@ -99,9 +99,9 @@ export interface ProvenanceChangeFact {
 
 /** A retained field whose excerpt was narrowed around a value that stayed put. */
 export interface ExcerptBoundaryChangeFact extends ProvenanceChangeFact {
-  /** Prior excerpt text before the current excerpt's start; whole lines only. */
+  /** Prior excerpt text before the current excerpt's start, ending in a blank line. */
   readonly droppedBefore: string;
-  /** Prior excerpt text after the current excerpt's end; whole lines only. */
+  /** Prior excerpt text after the current excerpt's end, starting with a blank line. */
   readonly droppedAfter: string;
 }
 
@@ -133,7 +133,7 @@ export interface ProposalSetFacts {
   /**
    * Present when non-empty: retained fields whose equal string value sits at
    * the same offsets while the current excerpt is a narrower cut of the prior
-   * one, citing nothing new and dropping only whole lines. The cited value did
+   * one, citing nothing new and dropping only whole paragraphs. The cited value did
    * not move, so these are not in `provenanceChanges`; the exact occurrence
    * facts still list both locators, and each fact carries the dropped text.
    */
@@ -296,7 +296,11 @@ function resolvedAtLocator(provenance: Provenance, span: { readonly start: numbe
 }
 
 const wordCharacter = /[\p{L}\p{N}_]/u;
-const lineBreak = (character: string): boolean => character === "\n" || character === "\r";
+const lineBreaks = (text: string): string => text.replace(/\r\n?/g, "\n");
+/** Dropped text ends with a blank line: a paragraph break before what was kept. */
+const endsWithBlankLine = (text: string): boolean => /\n[^\S\n]*\n$/.test(lineBreaks(text));
+/** Dropped text starts with a blank line: a paragraph break after what was kept. */
+const startsWithBlankLine = (text: string): boolean => /^\n[^\S\n]*\n/.test(lineBreaks(text));
 
 /** The value at `at` in `excerpt` is not the inside of a longer word or number. */
 function onTokenBoundaries(excerpt: string, at: number, length: number): boolean {
@@ -315,8 +319,8 @@ function onTokenBoundaries(excerpt: string, at: number, length: number): boolean
  * - an equal, non-empty string value;
  * - well-formed `chars:` locators that the resolver, if it ran, settled on;
  * - a current span strictly inside the prior span, with the same text there;
- * - only whole lines dropped, so nothing on a line the current excerpt keeps
- *   (the value's own line included) went away;
+ * - only whole paragraphs dropped: a blank line separates the dropped text
+ *   from what is kept, so a hard-wrapped sentence is never cut;
  * - the value first found at the same absolute offset in both excerpts, and
  *   not as part of a longer word or number in either;
  * - resolver version and ambiguity unchanged.
@@ -341,8 +345,8 @@ function narrowedAroundValue(prior: ExtractionProposal, current: ExtractionPropo
   const droppedBefore = priorExcerpt.slice(0, currentSpan.start - priorSpan.start);
   const droppedAfter = priorExcerpt.slice(currentSpan.end - priorSpan.start);
   if (priorExcerpt.slice(droppedBefore.length, priorExcerpt.length - droppedAfter.length) !== currentExcerpt) return no;
-  if (droppedBefore !== "" && !lineBreak(droppedBefore[droppedBefore.length - 1]!)) return no;
-  if (droppedAfter !== "" && !lineBreak(droppedAfter[0]!)) return no;
+  if (droppedBefore !== "" && !endsWithBlankLine(droppedBefore)) return no;
+  if (droppedAfter !== "" && !startsWithBlankLine(droppedAfter)) return no;
   const priorAt = priorExcerpt.indexOf(value);
   const currentAt = currentExcerpt.indexOf(value);
   if (priorAt < 0 || currentAt < 0 || priorSpan.start + priorAt !== currentSpan.start + currentAt) return no;

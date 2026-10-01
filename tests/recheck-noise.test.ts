@@ -133,7 +133,7 @@ describe("recheck review noise", () => {
     }
   });
 
-  test("an excerpt narrowed by whole lines around a value that stayed put creates no work", () => {
+  test("an excerpt narrowed by whole paragraphs around a value that stayed put creates no work", () => {
     const text = "Editors:\n\nAda Example, Example Institute\n\nBo Example, Example Institute";
     const prior = cited("Ada Example", text, 502, { selection: "occurrence-hint", hintUsed: true });
     const cases: Array<[string, ExtractionProposal, string, string]> = [
@@ -141,6 +141,11 @@ describe("recheck review noise", () => {
       ["trailing lines", cited("Ada Example", text.slice(0, 40), 502), "", "\n\nBo Example, Example Institute"],
       ["both", cited("Ada Example", text.slice(10, 40), 512), "Editors:\n\n", "\n\nBo Example, Example Institute"],
     ];
+    // Other spellings of a blank line count as the same paragraph break.
+    for (const gap of ["\r\n\r\n", "\n \t\n", "\r\r", "\n\n\n"]) {
+      const wrapped = cited("Ada Example", `Editors:${gap}Ada Example${gap}Bo Example`, 100);
+      assert.deepEqual(review(...pair(wrapped, cited("Ada Example", "Ada Example", 108 + gap.length))), [], JSON.stringify(gap));
+    }
     for (const [label, current, droppedBefore, droppedAfter] of cases) {
       assert.deepEqual(review(...pair(prior, current)), [], label);
       const boundaryFacts = facts(...pair(prior, current));
@@ -169,6 +174,13 @@ describe("recheck review noise", () => {
     reported("added prefix", cited("active", "active", 100), cited("active", "inactive", 98));
     reported("added digit", cited("1,000 users", "1,000 users", 100), cited("1,000 users", "11,000 users", 99));
     reported("added suffix", cited("Approved", "Approved", 100), cited("Approved", "Approved: no", 100));
+    // A hard wrap is not a paragraph break: the dropped line belongs to the value's sentence.
+    reported("wrapped negation", cited("Active", "Status: not\nActive", 100), cited("Active", "Active", 112));
+    reported("wrapped hyphenation", cited("active", "in-\nactive", 100), cited("active", "active", 104));
+    reported("wrapped sign", cited("5", "-\n5", 100), cited("5", "5", 102));
+    reported("heading one line above", cited("Ada Example", "Editors:\nAda Example, Example Institute", 100), cited("Ada Example", "Ada Example, Example Institute", 109));
+    reported("wrapped CRLF", cited("Active", "Status: not\r\nActive", 100), cited("Active", "Active", 113));
+    reported("wrapped after", cited("Active", "Active\nno longer", 100), cited("Active", "Active", 100));
     // The reverse of the last: narrowing that drops the rest of the value's line.
     reported("dropped suffix", cited("Approved", "Approved: no", 100), cited("Approved", "Approved", 100));
   });
@@ -190,10 +202,10 @@ describe("recheck review noise", () => {
     // Overlapping but neither inside the other.
     reported("slid", cited("Ada Example", "Editors:\n\nAda Example", 502), cited("Ada Example", "Ada Example, Example Institute", 512));
     // The narrowing dropped an earlier match, so the first match is elsewhere.
-    reported("earlier match dropped", cited("Ada Example", `Ada Example\n${text}`, 490), cited("Ada Example", text.slice(10), 512));
+    reported("earlier match dropped", cited("Ada Example", `Ada Example\n\n${text}`, 489), cited("Ada Example", text.slice(10), 512));
     // Whole lines dropped, but the value is the inside of a longer word.
-    reported("inside a word", cited("active", "Status\ninactive today", 100), cited("active", "inactive today", 107));
-    reported("inside a number", cited("000", "Total\n1,0001 users", 100), cited("000", "1,0001 users", 106));
+    reported("inside a word", cited("active", "Status\n\ninactive today", 100), cited("active", "inactive today", 108));
+    reported("inside a number", cited("000", "Total\n\n1,0001 users", 100), cited("000", "1,0001 users", 107));
   });
 
   test("a narrowed excerpt is a move when its place cannot be vouched for", () => {
@@ -202,14 +214,15 @@ describe("recheck review noise", () => {
     const list = "Ada Example\n\nBo Example\n\nCy Example";
     reported("derived", cited(3, `Editors:\n\n${list}`, 502), cited(3, list, 512));
     // Digits are not located: "3" also occurs inside other numbers.
-    reported("digits", cited(3, "Editors\n(3): Ada Example", 502), cited(3, "(3): Ada Example", 510));
+    reported("digits", cited(3, "Editors\n\n(3): Ada Example", 502), cited(3, "(3): Ada Example", 511));
     // A locator that does not describe its excerpt cannot vouch for an offset.
     const narrowed = cited("Ada Example", wide.slice(10), 512);
     reported("malformed locator", cited("Ada Example", wide, 502), { ...narrowed, provenance: { ...narrowed.provenance, locator: "chars:512-530" } });
     // The same when the resolver metadata repeats the wrong span, on the prior side.
     const overlong = cited("Ada Example", wide, 502, { selected: { index: 0, start: 502, end: 560 } });
     reported("malformed prior locator", { ...overlong, provenance: { ...overlong.provenance, locator: "chars:502-560" } }, narrowed);
-    // The resolver settled somewhere other than the locator.
+    // The resolver settled somewhere other than the locator, on either side.
+    reported("prior resolved elsewhere", cited("Ada Example", wide, 502, { selected: { index: 0, start: 602, end: 642 } }), narrowed);
     reported("resolved elsewhere", cited("Ada Example", wide, 502), cited("Ada Example", wide.slice(10), 512, { selected: { index: 0, start: 612, end: 642 } }));
     // A resolution that became ambiguous is not the same citation.
     reported("ambiguous", cited("Ada Example", wide, 502), cited("Ada Example", wide.slice(10), 512, { count: 2, ambiguous: true }));

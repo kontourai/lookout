@@ -119,7 +119,7 @@ results rather than throwing.
   item: a value change that also moved is a single value-changed item with both
   locators. Provenance equality is the resolved occurrence, not how the
   resolver was steered to it (`occurrence.selection`, `hintUsed`). An excerpt
-  only narrowed by whole lines around an equal value at the same offsets is an
+  only narrowed by whole paragraphs around an equal value at the same offsets is an
   `excerptBoundaryChanges` fact carrying the dropped text, not work; any
   widening or shift is still one moved item. Every item binds both
   observation identities and preserves each available side's source snapshot,

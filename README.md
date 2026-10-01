@@ -554,10 +554,11 @@ the occurrence the resolver settled on, so a run that differs only in
 hint) creates no work. Match count, selected index, selected span and ambiguity
 are still compared. An excerpt that was only narrowed around a value that
 stayed put also creates no work: the current span lies inside the prior span
-with the same text, only whole lines were dropped, and the equal string value
+with the same text, only whole paragraphs were dropped (a blank line separates
+them from what is kept), and the equal string value
 sits at the same offsets on token boundaries. The diff lists it under
 `facts.excerptBoundaryChanges` with the dropped text. Widening, shifting,
-dropping text from a line the excerpt keeps, a value inside a longer word or
+dropping text not set off by a blank line, a value inside a longer word or
 number, or a value the excerpt does not literally contain is still one
 `proposal-moved` or `proposal-provenance-changed` item. Consumers that asserted
 two items for one changed field will now see one.

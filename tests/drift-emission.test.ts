@@ -80,17 +80,17 @@ test("an excerpt narrowed around an unmoved value reaches the emitted facts with
   try {
     const emitter = createDriftEmitter<Entity>({ store: createObservationStore({ root }), snapshotStore: admissionStore, now: () => "2026-07-10T12:00:00.000Z" });
     const common = { source: source(), callbacks };
-    const initial = observation("narrow-1", [proposal("same", { provenance: { locator: "chars:10-23", excerpt: "Heading:\nsame" } })]);
+    const initial = observation("narrow-1", [proposal("same", { provenance: { locator: "chars:10-24", excerpt: "Heading:\n\nsame" } })]);
     const first = await emitter.emit({ ...common, current: initial, check: anchor(initial, "one") });
     assert.equal(first.ok, true); if (!first.ok) return;
-    const current = observation("narrow-2", [proposal("same", { provenance: { locator: "chars:19-23", excerpt: "same" } })]);
+    const current = observation("narrow-2", [proposal("same", { provenance: { locator: "chars:20-24", excerpt: "same" } })]);
     const result = await emitter.emit({ ...common, current, check: anchor(current, "two") });
     assert.equal(result.ok, true); if (!result.ok) return;
     assert.deepEqual(result.value.events, []);
     const fact = result.value.facts[0]; assert.equal(fact?.kind, "proposal-set-facts");
     if (fact?.kind !== "proposal-set-facts") return;
     assert.deepEqual(fact.value.provenanceChanges, []);
-    assert.deepEqual(fact.value.excerptBoundaryChanges?.map((change) => [change.prior.provenance.locator, change.current.provenance.locator, change.droppedBefore, change.droppedAfter]), [["chars:10-23", "chars:19-23", "Heading:\n", ""]]);
+    assert.deepEqual(fact.value.excerptBoundaryChanges?.map((change) => [change.prior.provenance.locator, change.current.provenance.locator, change.droppedBefore, change.droppedAfter]), [["chars:10-24", "chars:20-24", "Heading:\n\n", ""]]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
