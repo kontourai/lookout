@@ -99,6 +99,11 @@ describe("recheck review noise", () => {
     const current = cited("Recommendation", "Status: Recommendation", 40);
     assert.deepEqual(review(...pair(prior, current)), []);
     assert.deepEqual(facts(...pair(prior, current)).provenanceChanges, []);
+    // Equal outright, not merely tolerated as a re-cut excerpt.
+    assert.equal(facts(...pair(prior, current)).excerptBoundaryChanges, undefined);
+    // Holds for a derived value the excerpt does not literally contain.
+    const counted = (overrides: Partial<Occurrence>) => cited(4, "Editors: Ada, Bo, Cy, Di", 40, overrides);
+    assert.deepEqual(review(...pair(counted({ selection: "occurrence-hint", hintUsed: true }), counted({}))), []);
   });
 
   test("a different occurrence of the same value is still reported, as one move", () => {
@@ -159,6 +164,8 @@ describe("recheck review noise", () => {
     // A derived value (a count) has no span of its own inside the excerpt.
     const list = "Ada Example\n\nBo Example\n\nCy Example";
     assert.deepEqual(review(...pair(cited(3, `Editors:\n\n${list}`, 502), cited(3, list, 512))).map((item) => item.kind), ["proposal-moved"]);
+    // Digits are not located: "3" also occurs inside other numbers.
+    assert.deepEqual(review(...pair(cited(3, "Editors (3):\n\nAda Example", 502), cited(3, "(3):\n\nAda Example", 510))).map((item) => item.kind), ["proposal-moved"]);
     // A locator that does not describe its excerpt cannot vouch for an offset.
     const malformed = cited("Ada Example", "Ada Example, Example Institute", 512);
     const broken: ExtractionProposal = { ...malformed, provenance: { ...malformed.provenance, locator: "chars:512-530" } };
