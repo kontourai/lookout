@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createObservationStore, type ProposalObservationRecordInput } from "../src/index.js";
+import { canonicalJson } from "../src/canonical-json.js";
 
 const input = (snapshotRef: string, recordedAt = `${snapshotRef}-recorded`): ProposalObservationRecordInput => ({
   observation: { sourceId: "source-a", snapshotRef, observedAt: `${snapshotRef}-observed`, proposals: [] },
@@ -298,5 +300,64 @@ test("a proposal whose value has array holes commits and reloads", async () => {
     const latest = await store.loadLatest("source-a");
     assert.equal(latest.ok, true, latest.ok ? "" : `${latest.error.kind}: ${latest.error.message}`);
     if (latest.ok) assert.deepEqual(latest.value?.proposals[0]?.candidateValue, [null, "x"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+const proposalInput = (proposal: ProposalObservationRecordInput["observation"]["proposals"][number]): ProposalObservationRecordInput => {
+  const base = input("snapshot-typed", "2026-10-01T00:00:00Z");
+  return { ...base, observation: { ...base.observation, proposals: [proposal] } };
+};
+const typedProposal = { fieldPath: "rate", candidateValue: 2.1, extractor: "example-extractor:v1", provenance: { locator: "chars:0-3", excerpt: "2.1" } };
+
+test("observations that differ only by an in-process valueNormalization get the same observationId", async () => {
+  const typedRoot = await mkdtemp(path.join(os.tmpdir(), "lookout-observations-"));
+  const rewrittenRoot = await mkdtemp(path.join(os.tmpdir(), "lookout-observations-"));
+  try {
+    const typed = await createObservationStore({ root: typedRoot }).commit(proposalInput(typedProposal), null);
+    const rewrittenStore = createObservationStore({ root: rewrittenRoot });
+    const rewritten = await rewrittenStore.commit(proposalInput({ ...typedProposal, valueNormalization: { kind: "string-to-number", from: "2.1" } }), null);
+    assert.equal(typed.ok, true); assert.equal(rewritten.ok, true);
+    if (!typed.ok || !rewritten.ok) return;
+    assert.equal(rewritten.value.observationId, typed.value.observationId);
+    // Pinned so a change to what the digest covers shows up here.
+    assert.equal(typed.value.observationId, "99e64099e2bf0de24359b8ef27e8c0f52567a97095c79229d90ebc2c2768d29a");
+    assert.equal(Object.hasOwn(rewritten.value.proposals[0]!, "valueNormalization"), false);
+    const stored = await readFile(path.join(rewrittenRoot, rewritten.value.sourceKey, `${rewritten.value.observationId}.json`), "utf8");
+    assert.equal(stored.includes("valueNormalization"), false);
+    const latest = await rewrittenStore.loadLatest("source-a");
+    assert.equal(latest.ok, true);
+    if (latest.ok) assert.equal(latest.value?.proposals[0]?.candidateValue, 2.1);
+    // A different value still gets a different id.
+    const other = await createObservationStore({ root: typedRoot }).commit(proposalInput({ ...typedProposal, candidateValue: 2.2 }), typed.value.observationId);
+    assert.equal(other.ok, true);
+    if (other.ok) assert.notEqual(other.value.observationId, typed.value.observationId);
+  } finally { await rm(typedRoot, { recursive: true, force: true }); await rm(rewrittenRoot, { recursive: true, force: true }); }
+});
+
+test("a stored record that already carries valueNormalization still loads and verifies", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "lookout-observations-"));
+  try {
+    const store = createObservationStore({ root });
+    const seeded = await store.commit(proposalInput(typedProposal), null);
+    assert.equal(seeded.ok, true); if (!seeded.ok) return;
+    // The record an earlier version wrote for the same observation: the key is
+    // in the stored bytes and under the digest.
+    const { observationId: _seededId, ...seededBody } = seeded.value;
+    const body = { ...seededBody, proposals: [{ ...typedProposal, valueNormalization: { kind: "string-to-number", from: "2.1" } }] };
+    const observationId = createHash("sha256").update(`${canonicalJson(body)}\n`).digest("hex");
+    assert.notEqual(observationId, seeded.value.observationId);
+    const dir = path.join(root, seeded.value.sourceKey);
+    await writeFile(path.join(dir, `${observationId}.json`), `${canonicalJson({ ...body, observationId })}\n`, "utf8");
+    await writeFile(path.join(dir, "latest.json"), `${canonicalJson({ version: 1, sourceId: "source-a", observationId })}\n`, "utf8");
+    const latest = await store.loadLatest("source-a");
+    assert.equal(latest.ok, true, latest.ok ? "" : `${latest.error.kind}: ${latest.error.message}`);
+    if (!latest.ok) return;
+    assert.equal(latest.value?.observationId, observationId);
+    assert.deepEqual((latest.value?.proposals[0] as { valueNormalization?: unknown }).valueNormalization, { kind: "string-to-number", from: "2.1" });
+    const head = await store.readVerifiedHead("source-a");
+    assert.equal(head.kind, "verified");
+    // And it is a usable prior for the next commit.
+    const next = await store.commit(input("snapshot-next"), observationId);
+    assert.equal(next.ok, true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
