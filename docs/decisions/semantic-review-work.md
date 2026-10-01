@@ -42,19 +42,27 @@ occurrence hint, so two runs that resolve the same span, index, match count and
 ambiguity are equal whatever steered them there. Every other resolver fact is
 still compared.
 
-An excerpt re-cut around a value that stayed put is not a move. When two
-proposals of one field carry the same string value, well-formed `chars:`
-locators, identical text wherever their excerpts overlap, and the value first
-found at the same absolute offset in both, the cited value is at the same place
-and the model only quoted more or less context. That pair raises no item and is
-listed in the diff's `excerptBoundaryChanges` fact; the exact occurrence facts
-still list both locators. The rule is deliberately narrow: a value at another
-offset, a different occurrence, differing overlap text, a non-string or derived
-value the excerpt does not literally contain, a locator that does not describe
-its excerpt, or a change in resolver version or ambiguity is reported as one
-moved or provenance-changed item. Text that only one of the two excerpts quotes
-is outside what both runs cited, exactly as text outside an unchanged excerpt
-is.
+An excerpt only narrowed around a value that stayed put is not a move. The
+pair raises no item when all of these hold: the two proposals carry the same
+non-empty string value; both locators are well-formed `chars:` spans that the
+resolver, when it ran, settled on; the current span lies strictly inside the
+prior span with the same text there, so nothing is newly cited; only whole
+lines were dropped, so no text went away from a line the current excerpt keeps,
+the value's own line included; the value is first found at the same absolute
+offset in both excerpts and is not the inside of a longer word or number in
+either; and resolver version and ambiguity are unchanged. Such a pair is listed
+in the diff's `excerptBoundaryChanges` fact with the text dropped before and
+after, and the exact occurrence facts still list both locators.
+
+Everything else is one moved or provenance-changed item: any widening or shift
+(it cites text the prior did not, which can negate or re-scope the value), a
+narrowing that drops text beside the value on its own line, a value at another
+offset or a different occurrence, a changed match count, selected index or
+selected span, a non-string or derived value, or a locator that does not
+describe its excerpt. No cue-word list is used; the rule is structural. Its
+accepted limit is that a dropped whole line, such as a heading above the value,
+raises no item. That text is carried in the fact for consumers that want to
+review it.
 
 Transition identity binds the source and both caller-provided observation
 identities. Item identity additionally binds the complete semantic change and

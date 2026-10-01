@@ -116,63 +116,107 @@ describe("recheck review noise", () => {
   });
 
   test("resolver facts other than the selection still count as provenance", () => {
+    // Same value, excerpt and locator each time; only what the resolver found differs.
     const prior = cited("Recommendation", "Status: Recommendation", 40, { selection: "occurrence-hint", hintUsed: true });
-    // The excerpt now matches twice, so the same span is no longer the only candidate.
-    const current = cited("Recommendation", "Status: Recommendation", 40, { count: 2, ambiguous: true });
-    assert.deepEqual(review(...pair(prior, current)).map((item) => item.kind), ["proposal-provenance-changed"]);
-  });
-
-  test("an excerpt cut differently around a value that stayed put creates no work", () => {
-    const text = "Editors:\n\nAda Example, Example Institute";
-    const prior = cited("Ada Example", text, 502, { selection: "occurrence-hint", hintUsed: true });
-    const narrowed = cited("Ada Example", text.slice(10), 512);
-    const widened = cited("Ada Example", `Section 1\n\n${text}`, 491);
-    for (const current of [narrowed, widened]) {
-      assert.deepEqual(review(...pair(prior, current)), []);
-      const boundaryFacts = facts(...pair(prior, current));
-      assert.deepEqual(boundaryFacts.provenanceChanges, []);
-      assert.equal(boundaryFacts.excerptBoundaryChanges?.length, 1);
-      // The exact occurrence facts are untouched: the locator did change.
-      assert.equal(boundaryFacts.removedProposalOccurrences.length, 1);
-      assert.equal(boundaryFacts.addedProposalOccurrences.length, 1);
+    const cases: Array<[string, Partial<Occurrence>]> = [
+      ["match count", { count: 2 }],
+      ["selected index", { selected: { index: 1, start: 40, end: 62 } }],
+      ["selected span", { selected: { index: 0, start: 44, end: 66 } }],
+      ["ambiguity", { count: 2, ambiguous: true }],
+    ];
+    for (const [label, overrides] of cases) {
+      const current = cited("Recommendation", "Status: Recommendation", 40, overrides);
+      assert.deepEqual(review(...pair(prior, current)).map((item) => item.kind), ["proposal-provenance-changed"], label);
+      const resolverFacts = facts(...pair(prior, current));
+      assert.equal(resolverFacts.provenanceChanges.length, 1, label);
+      assert.equal(resolverFacts.excerptBoundaryChanges, undefined, label);
     }
   });
 
-  test("a re-cut excerpt is still one move when the value itself is somewhere else", () => {
+  test("an excerpt narrowed by whole lines around a value that stayed put creates no work", () => {
+    const text = "Editors:\n\nAda Example, Example Institute\n\nBo Example, Example Institute";
+    const prior = cited("Ada Example", text, 502, { selection: "occurrence-hint", hintUsed: true });
+    const cases: Array<[string, ExtractionProposal, string, string]> = [
+      ["leading lines", cited("Ada Example", text.slice(10), 512), "Editors:\n\n", ""],
+      ["trailing lines", cited("Ada Example", text.slice(0, 40), 502), "", "\n\nBo Example, Example Institute"],
+      ["both", cited("Ada Example", text.slice(10, 40), 512), "Editors:\n\n", "\n\nBo Example, Example Institute"],
+    ];
+    for (const [label, current, droppedBefore, droppedAfter] of cases) {
+      assert.deepEqual(review(...pair(prior, current)), [], label);
+      const boundaryFacts = facts(...pair(prior, current));
+      assert.deepEqual(boundaryFacts.provenanceChanges, [], label);
+      // The narrowing is recorded with the text it dropped.
+      assert.deepEqual(boundaryFacts.excerptBoundaryChanges?.map((fact) => [fact.prior.provenance.locator, fact.current.provenance.locator, fact.droppedBefore, fact.droppedAfter]), [[prior.provenance.locator, current.provenance.locator, droppedBefore, droppedAfter]], label);
+      // The exact occurrence facts are untouched: the locator did change.
+      assert.equal(boundaryFacts.removedProposalOccurrences.length, 1, label);
+      assert.equal(boundaryFacts.addedProposalOccurrences.length, 1, label);
+    }
+  });
+
+  /** Exactly one move or provenance-changed item, and no narrowing fact. */
+  function reported(label: string, prior: ExtractionProposal, current: ExtractionProposal): void {
+    const expected = prior.provenance.locator === current.provenance.locator ? "proposal-provenance-changed" : "proposal-moved";
+    assert.deepEqual(review(...pair(prior, current)).map((item) => item.kind), [expected], label);
+    assert.equal(facts(...pair(prior, current)).excerptBoundaryChanges, undefined, label);
+    assert.equal(facts(...pair(prior, current)).provenanceChanges.length, 1, label);
+  }
+
+  test("a re-cut that changes what the citation says is reported", () => {
+    // Narrowing that drops text from the value's own line.
+    reported("dropped qualifier", cited("Active", "not available: Active", 100), cited("Active", "Active", 115));
+    // Widening cites text the prior did not.
+    reported("added negation", cited("Active", "Active", 100), cited("Active", "not Active", 96));
+    reported("added prefix", cited("active", "active", 100), cited("active", "inactive", 98));
+    reported("added digit", cited("1,000 users", "1,000 users", 100), cited("1,000 users", "11,000 users", 99));
+    reported("added suffix", cited("Approved", "Approved", 100), cited("Approved", "Approved: no", 100));
+  });
+
+  test("a re-cut excerpt is still one item unless it is a pure whole-line narrowing", () => {
     const text = "Editors:\n\nAda Example, Example Institute";
     const prior = cited("Ada Example", text, 502);
-    const cases: Array<[string, ExtractionProposal]> = [
-      // The same excerpt at other offsets.
-      ["shifted", cited("Ada Example", text, 530)],
-      // A narrower excerpt whose value lands at another offset.
-      ["narrowed and shifted", cited("Ada Example", text.slice(10), 540)],
-      // Overlapping spans whose shared text is not the same text.
-      ["different text", cited("Ada Example", "Authors:\n\nAda Example, Another Institute", 502)],
-      // Excerpts that do not overlap at all.
-      ["disjoint", cited("Ada Example", "Ada Example", 900)],
-      // The first match in one excerpt is a different place than in the other.
-      ["earlier match", cited("Ada Example", `Ada Example and ${text}`, 486)],
-    ];
-    for (const [label, current] of cases) {
-      const items = review(...pair(prior, current));
-      assert.deepEqual(items.map((item) => item.kind), [prior.provenance.locator === current.provenance.locator ? "proposal-provenance-changed" : "proposal-moved"], label);
-      assert.equal(facts(...pair(prior, current)).excerptBoundaryChanges, undefined, label);
-    }
+    // The same excerpt at other offsets.
+    reported("shifted", prior, cited("Ada Example", text, 530));
+    // A narrower excerpt whose value lands at another offset.
+    reported("narrowed and shifted", prior, cited("Ada Example", text.slice(10), 540));
+    // The same span, other text.
+    reported("different text", prior, cited("Ada Example", "Authors:\n\nAda Example, Example Institute", 502));
+    // A narrower span whose text is not the prior's text there.
+    reported("narrowed, other text", prior, cited("Ada Example", "Ada Example, Another Institut", 512));
+    reported("disjoint", prior, cited("Ada Example", "Ada Example", 900));
+    // Whole lines added before: widening, even though the old text is intact.
+    reported("widened by lines", prior, cited("Ada Example", `Section 1\n\n${text}`, 491));
+    // Overlapping but neither inside the other.
+    reported("slid", cited("Ada Example", "Editors:\n\nAda Example", 502), cited("Ada Example", "Ada Example, Example Institute", 512));
+    // The narrowing dropped an earlier match, so the first match is elsewhere.
+    reported("earlier match dropped", cited("Ada Example", `Ada Example\n${text}`, 490), cited("Ada Example", text.slice(10), 512));
+    // Whole lines dropped, but the value is the inside of a longer word.
+    reported("inside a word", cited("active", "Status\ninactive today", 100), cited("active", "inactive today", 107));
+    reported("inside a number", cited("000", "Total\n1,0001 users", 100), cited("000", "1,0001 users", 106));
   });
 
-  test("a re-cut excerpt is a move when the value cannot be located in it", () => {
+  test("a narrowed excerpt is a move when its place cannot be vouched for", () => {
+    const wide = "Editors:\n\nAda Example, Example Institute";
     // A derived value (a count) has no span of its own inside the excerpt.
     const list = "Ada Example\n\nBo Example\n\nCy Example";
-    assert.deepEqual(review(...pair(cited(3, `Editors:\n\n${list}`, 502), cited(3, list, 512))).map((item) => item.kind), ["proposal-moved"]);
+    reported("derived", cited(3, `Editors:\n\n${list}`, 502), cited(3, list, 512));
     // Digits are not located: "3" also occurs inside other numbers.
-    assert.deepEqual(review(...pair(cited(3, "Editors (3):\n\nAda Example", 502), cited(3, "(3):\n\nAda Example", 510))).map((item) => item.kind), ["proposal-moved"]);
+    reported("digits", cited(3, "Editors\n(3): Ada Example", 502), cited(3, "(3): Ada Example", 510));
     // A locator that does not describe its excerpt cannot vouch for an offset.
-    const malformed = cited("Ada Example", "Ada Example, Example Institute", 512);
-    const broken: ExtractionProposal = { ...malformed, provenance: { ...malformed.provenance, locator: "chars:512-530" } };
-    assert.deepEqual(review(...pair(cited("Ada Example", "Editors:\n\nAda Example, Example Institute", 502), broken)).map((item) => item.kind), ["proposal-moved"]);
+    const narrowed = cited("Ada Example", wide.slice(10), 512);
+    reported("malformed locator", cited("Ada Example", wide, 502), { ...narrowed, provenance: { ...narrowed.provenance, locator: "chars:512-530" } });
+    // The resolver settled somewhere other than the locator.
+    reported("resolved elsewhere", cited("Ada Example", wide, 502), cited("Ada Example", wide.slice(10), 512, { selected: { index: 0, start: 612, end: 642 } }));
     // A resolution that became ambiguous is not the same citation.
-    const ambiguous = cited("Ada Example", "Ada Example, Example Institute", 512, { count: 2, ambiguous: true });
-    assert.deepEqual(review(...pair(cited("Ada Example", "Editors:\n\nAda Example, Example Institute", 502), ambiguous)).map((item) => item.kind), ["proposal-moved"]);
+    reported("ambiguous", cited("Ada Example", wide, 502), cited("Ada Example", wide.slice(10), 512, { count: 2, ambiguous: true }));
+  });
+
+  test("proposals of one field pair by value whatever steered the resolver", () => {
+    // Two values cited from one span. Only which of them carried a hint flips.
+    const from = (value: string, hinted: boolean) => cited(value, "Ada Example and Bo Example", 40, hinted ? { selection: "occurrence-hint", hintUsed: true } : {});
+    const observations = (proposals: ExtractionProposal[], snapshotRef: string): ProposalSetObservation => ({ sourceId: "source-example", snapshotRef, observedAt: "2026-01-01T00:00:00.000Z", proposals });
+    const prior = observations([from("Ada Example", true), from("Bo Example", false)], "snapshot-prior");
+    const current = observations([from("Ada Example", false), from("Bo Example", true)], "snapshot-current");
+    assert.deepEqual(review(prior, current), []);
   });
 
   test("a value change that also moved is one item carrying both locators", () => {

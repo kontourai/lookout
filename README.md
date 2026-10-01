@@ -551,12 +551,16 @@ One field change is one item: a value change that also moved is a single
 `proposal-value-changed` item carrying both locators. Provenance is compared on
 the occurrence the resolver settled on, so a run that differs only in
 `occurrence.selection` / `hintUsed` (whether the provider sent an optional
-hint) creates no work. An equal string value found at the same offsets, in text
-both excerpts quote identically, with only the excerpt cut wider or narrower
-around it, also creates no work; the diff lists it under
-`facts.excerptBoundaryChanges`. A value at another offset, different text
-around it, or a value the excerpt does not literally contain is still one
-`proposal-moved` or `proposal-provenance-changed` item.
+hint) creates no work. Match count, selected index, selected span and ambiguity
+are still compared. An excerpt that was only narrowed around a value that
+stayed put also creates no work: the current span lies inside the prior span
+with the same text, only whole lines were dropped, and the equal string value
+sits at the same offsets on token boundaries. The diff lists it under
+`facts.excerptBoundaryChanges` with the dropped text. Widening, shifting,
+dropping text from a line the excerpt keeps, a value inside a longer word or
+number, or a value the excerpt does not literally contain is still one
+`proposal-moved` or `proposal-provenance-changed` item. Consumers that asserted
+two items for one changed field will now see one.
 A proposal an incomplete prior lacked (`newlyObserved*`) becomes
 `proposal-newly-observed` work: it may be new, or may have sat in text the
 prior never read. An occurrence of a field the prior did read, found by the
