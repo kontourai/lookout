@@ -123,6 +123,14 @@ export interface ProposalSetFacts {
   /** Retained fields whose confidence appeared or disappeared. */
   readonly confidenceChanges?: readonly ConfidenceChangeFact[];
   /**
+   * Present when non-empty: retained fields whose equal string value sits at
+   * the same offsets in text both excerpts quote identically, while the excerpt
+   * around it starts or ends elsewhere. The cited value did not move, so these
+   * are not in `provenanceChanges`; the exact occurrence facts still list both
+   * locators.
+   */
+  readonly excerptBoundaryChanges?: readonly ProvenanceChangeFact[];
+  /**
    * Current proposal occurrences missing from an incomplete prior observation.
    * The prior may have held them in text it never read, so they are not in the
    * added facts and raise no event. An occurrence of a field the prior did
@@ -238,6 +246,68 @@ function evidence(
   };
 }
 
+type Provenance = ExtractionProposal["provenance"];
+
+/**
+ * Provenance as equality sees it: the occurrence the resolver settled on, not
+ * how it was steered there. `selection` and `hintUsed` only record whether the
+ * provider sent an optional hint; the span, index, match count and ambiguity
+ * they led to all stay compared.
+ */
+function resolvedProvenance(provenance: Provenance): unknown {
+  const occurrence: unknown = provenance.occurrence;
+  if (typeof occurrence !== "object" || occurrence === null) return provenance;
+  const { selection: _selection, hintUsed: _hintUsed, ...resolved } = occurrence as Record<string, unknown>;
+  return { ...provenance, occurrence: resolved };
+}
+
+function excerptSpan(provenance: Provenance): { readonly start: number; readonly end: number } | null {
+  const match = /^chars:(\d+)-(\d+)$/.exec(provenance.locator);
+  if (match === null) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end - start === provenance.excerpt.length ? { start, end } : null;
+}
+
+/** What must still agree between two excerpts cut differently around one value. */
+function besidesExcerptCut(provenance: Provenance): unknown {
+  const { excerpt: _excerpt, locator: _locator, occurrence, ...rest } = provenance as Provenance & Record<string, unknown>;
+  if (typeof occurrence !== "object" || occurrence === null) return { rest, occurrence };
+  // The match count, index and span describe the excerpt string, which differs
+  // by construction; resolver version and ambiguity must not.
+  const { selected: _selected, count: _count, selection: _selection, hintUsed: _hintUsed, ...steady } = occurrence as unknown as Record<string, unknown>;
+  return { rest, occurrence: steady };
+}
+
+/**
+ * Whether two proposals of one field cite the same value at the same place and
+ * differ only in where the surrounding excerpt was cut. Requires an equal
+ * string value, well-formed `chars:` locators, identical text wherever the two
+ * excerpts overlap, and the value first found at the same absolute offset in
+ * both. Anything else (the value elsewhere, different text around it, a value
+ * the excerpt does not literally contain) is a real provenance change.
+ */
+function sameValueSpan(prior: ExtractionProposal, current: ExtractionProposal): DiffResult<boolean> {
+  const value: unknown = prior.candidateValue;
+  if (typeof value !== "string" || value.length === 0 || current.candidateValue !== value) return { ok: true, value: false };
+  const priorSpan = excerptSpan(prior.provenance);
+  const currentSpan = excerptSpan(current.provenance);
+  if (priorSpan === null || currentSpan === null) return { ok: true, value: false };
+  const start = Math.max(priorSpan.start, currentSpan.start);
+  const end = Math.min(priorSpan.end, currentSpan.end);
+  if (start >= end) return { ok: true, value: false };
+  if (prior.provenance.excerpt.slice(start - priorSpan.start, end - priorSpan.start) !==
+      current.provenance.excerpt.slice(start - currentSpan.start, end - currentSpan.start)) return { ok: true, value: false };
+  const priorAt = prior.provenance.excerpt.indexOf(value);
+  const currentAt = current.provenance.excerpt.indexOf(value);
+  if (priorAt < 0 || currentAt < 0 || priorSpan.start + priorAt !== currentSpan.start + currentAt) return { ok: true, value: false };
+  const priorRest = canonicalValueKey(besidesExcerptCut(prior.provenance));
+  if (!priorRest.ok) return priorRest;
+  const currentRest = canonicalValueKey(besidesExcerptCut(current.provenance));
+  if (!currentRest.ok) return currentRest;
+  return { ok: true, value: priorRest.key === currentRest.key };
+}
+
 function changeKind(prior: unknown, current: unknown): DiffResult<FieldChangeKind> {
   if (prior === undefined && current !== undefined) return { ok: true, value: "value-populated" };
   if (Array.isArray(prior) && Array.isArray(current)) {
@@ -260,7 +330,7 @@ function semanticFieldOrder<E>(items: readonly { entity: E; proposal: Extraction
     if (!fieldKey.ok) return fieldKey;
     let encoded;
     try {
-      encoded = canonicalValueKey({ value: item.proposal.candidateValue, provenance: item.proposal.provenance });
+      encoded = canonicalValueKey({ value: item.proposal.candidateValue, provenance: resolvedProvenance(item.proposal.provenance) });
     } catch (cause) {
       return { ok: false, error: { kind: "unsupported-value", message: "Proposal semantic content could not be inspected", path: "$", cause } };
     }
@@ -297,6 +367,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
   const addedProposalEvidence: ProposalEvidence[] = [];
   const removedProposalEvidence: ProposalEvidence[] = [];
   const confidenceChanges: ConfidenceChangeFact[] = [];
+  const excerptBoundaryChanges: ProvenanceChangeFact[] = [];
   const unobservedProposalOccurrences: ExtractionProposal[] = [];
   const unobservedProposalEvidence: ProposalEvidence[] = [];
   const unobservedEntities: string[] = [];
@@ -360,13 +431,17 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       const fieldKey = fieldKeyResult.value;
       const comparison = compareStructural(field.prior.proposal, field.current.proposal, {
         value: (proposal) => proposal.candidateValue,
-        provenance: (proposal) => proposal.provenance,
+        provenance: (proposal) => resolvedProvenance(proposal.provenance),
       });
       if (!comparison.ok) return comparison;
       const priorEvidence = evidence(input.prior, entityKey, fieldKey, field.prior.proposal);
       const currentEvidence = evidence(input.current, entityKey, fieldKey, field.current.proposal);
       if (comparison.value.provenanceChanged) {
-        provenanceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
+        const boundaryOnly: DiffResult<boolean> = comparison.value.valueChanged
+          ? { ok: true, value: false }
+          : sameValueSpan(field.prior.proposal, field.current.proposal);
+        if (!boundaryOnly.ok) return boundaryOnly;
+        (boundaryOnly.value ? excerptBoundaryChanges : provenanceChanges).push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
       }
       if ((field.prior.proposal.confidence === undefined) !== (field.current.proposal.confidence === undefined)) {
         confidenceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
@@ -447,6 +522,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       events,
       facts: {
         retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence, confidenceChanges,
+        ...(excerptBoundaryChanges.length === 0 ? {} : { excerptBoundaryChanges }),
         ...(priorIncomplete ? { newlyObservedProposalOccurrences, newlyObservedProposalEvidence, newlyObservedEntities } : {}),
         ...(priorText === undefined ? {} : { newlyObservedEntityAnchors }),
         ...(currentIncomplete ? { unobservedProposalOccurrences, unobservedProposalEvidence, unobservedEntities } : {}),

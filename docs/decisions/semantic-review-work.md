@@ -5,6 +5,8 @@ decided: 2026-07-20
 evidence:
   - kind: issue
     ref: https://github.com/kontourai/lookout/issues/24
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/105
   - kind: doc
     ref: src/semantic-review-work.ts
 ---
@@ -27,6 +29,32 @@ explicit absent current candidate anchored to the new snapshot. Additions use
 the inverse representation. Two-sided changes retain both exact snapshot,
 observation-time, locator, excerpt, confidence, extractor, entity, and field
 anchors.
+
+One field change is one item. A retained field whose value changed and whose
+citation also moved is a single value-changed item carrying both sides'
+locators and excerpts; the move stays a provenance fact in the diff. A changed
+value whose new citation has no locator or excerpt still gets its own
+provenance-gap item.
+
+Provenance equality is the resolved occurrence. `occurrence.selection` and
+`occurrence.hintUsed` record only whether a provider sent an optional
+occurrence hint, so two runs that resolve the same span, index, match count and
+ambiguity are equal whatever steered them there. Every other resolver fact is
+still compared.
+
+An excerpt re-cut around a value that stayed put is not a move. When two
+proposals of one field carry the same string value, well-formed `chars:`
+locators, identical text wherever their excerpts overlap, and the value first
+found at the same absolute offset in both, the cited value is at the same place
+and the model only quoted more or less context. That pair raises no item and is
+listed in the diff's `excerptBoundaryChanges` fact; the exact occurrence facts
+still list both locators. The rule is deliberately narrow: a value at another
+offset, a different occurrence, differing overlap text, a non-string or derived
+value the excerpt does not literally contain, a locator that does not describe
+its excerpt, or a change in resolver version or ambiguity is reported as one
+moved or provenance-changed item. Text that only one of the two excerpts quotes
+is outside what both runs cited, exactly as text outside an unchanged excerpt
+is.
 
 Transition identity binds the source and both caller-provided observation
 identities. Item identity additionally binds the complete semantic change and

@@ -172,6 +172,7 @@ function normalizeDiff(value: ProposalSetDiff): ProposalSetDiff {
       addedProposalEvidence: sorted(value.facts.addedProposalEvidence ?? []),
       removedProposalEvidence: sorted(value.facts.removedProposalEvidence ?? []),
       confidenceChanges: sorted(value.facts.confidenceChanges ?? []),
+      ...(value.facts.excerptBoundaryChanges === undefined ? {} : { excerptBoundaryChanges: sorted(value.facts.excerptBoundaryChanges) }),
       ...(value.facts.newlyObservedProposalOccurrences === undefined ? {} : { newlyObservedProposalOccurrences: sorted(value.facts.newlyObservedProposalOccurrences) }),
       ...(value.facts.newlyObservedProposalEvidence === undefined ? {} : { newlyObservedProposalEvidence: sorted(value.facts.newlyObservedProposalEvidence) }),
       ...(value.facts.newlyObservedEntities === undefined ? {} : { newlyObservedEntities: [...value.facts.newlyObservedEntities].sort() }),

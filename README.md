@@ -547,6 +547,16 @@ const work = buildSemanticReviewWork({
 ```
 
 Added, removed, moved, provenance-changed, and value-changed proposals become distinct work items.
+One field change is one item: a value change that also moved is a single
+`proposal-value-changed` item carrying both locators. Provenance is compared on
+the occurrence the resolver settled on, so a run that differs only in
+`occurrence.selection` / `hintUsed` (whether the provider sent an optional
+hint) creates no work. An equal string value found at the same offsets, in text
+both excerpts quote identically, with only the excerpt cut wider or narrower
+around it, also creates no work; the diff lists it under
+`facts.excerptBoundaryChanges`. A value at another offset, different text
+around it, or a value the excerpt does not literally contain is still one
+`proposal-moved` or `proposal-provenance-changed` item.
 A proposal an incomplete prior lacked (`newlyObserved*`) becomes
 `proposal-newly-observed` work: it may be new, or may have sat in text the
 prior never read. An occurrence of a field the prior did read, found by the
