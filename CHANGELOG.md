@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/kontourai/lookout/compare/v0.8.4...v0.8.5) (2026-10-01)
+
+
+### Fixes
+
+* one review item per field change, none for resolver or excerpt-cut noise ([#106](https://github.com/kontourai/lookout/issues/106)) ([edfe0ea](https://github.com/kontourai/lookout/commit/edfe0eae77a299738950397ab24e8eef0df346f0))
+
 ## [0.8.4](https://github.com/kontourai/lookout/compare/v0.8.3...v0.8.4) (2026-10-01)
 
 
