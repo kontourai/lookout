@@ -115,7 +115,13 @@ results rather than throwing.
   one genuine prior/current proposal transition into structurally
   Survey-compatible `ReviewItem` resources. Added, removed, moved, and
   value-changed and provenance-changed proposals are distinct; newly introduced declared-field
-  coverage gaps and exact-provenance gaps are explicit. Every item binds both
+  coverage gaps and exact-provenance gaps are explicit. One field change is one
+  item: a value change that also moved is a single value-changed item with both
+  locators. Provenance equality is the resolved occurrence, not how the
+  resolver was steered to it (`occurrence.selection`, `hintUsed`). An excerpt
+  only narrowed by whole paragraphs around an equal value at the same offsets is an
+  `excerptBoundaryChanges` fact carrying the dropped text, not work; any
+  widening or shift is still one moved item. Every item binds both
   observation identities and preserves each available side's source snapshot,
   locator, excerpt, extractor, and observation time. An absent side remains a
   reviewable source-version candidate anchored to that observation's snapshot.

@@ -5,6 +5,8 @@ decided: 2026-07-20
 evidence:
   - kind: issue
     ref: https://github.com/kontourai/lookout/issues/24
+  - kind: issue
+    ref: https://github.com/kontourai/lookout/issues/105
   - kind: doc
     ref: src/semantic-review-work.ts
 ---
@@ -27,6 +29,43 @@ explicit absent current candidate anchored to the new snapshot. Additions use
 the inverse representation. Two-sided changes retain both exact snapshot,
 observation-time, locator, excerpt, confidence, extractor, entity, and field
 anchors.
+
+One field change is one item. A retained field whose value changed and whose
+citation also moved is a single value-changed item carrying both sides'
+locators and excerpts; the move stays a provenance fact in the diff. A changed
+value whose new citation has no locator or excerpt still gets its own
+provenance-gap item.
+
+Provenance equality is the resolved occurrence. `occurrence.selection` and
+`occurrence.hintUsed` record only whether a provider sent an optional
+occurrence hint, so two runs that resolve the same span, index, match count and
+ambiguity are equal whatever steered them there. Every other resolver fact is
+still compared.
+
+An excerpt only narrowed around a value that stayed put is not a move. The
+pair raises no item when all of these hold: the two proposals carry the same
+non-empty string value; both locators are well-formed `chars:` spans that the
+resolver, when it ran, settled on; the current span lies strictly inside the
+prior span with the same text there, so nothing is newly cited; only whole
+paragraphs were dropped, meaning a blank line (two or more line breaks, in any
+CR/LF spelling, with at most whitespace between) separates the dropped text
+from what is kept, so a hard-wrapped sentence is never cut; the value is first found at the same absolute
+offset in both excerpts and is not the inside of a longer word or number in
+either; and resolver version and ambiguity are unchanged. Such a pair is listed
+in the diff's `excerptBoundaryChanges` fact with the text dropped before and
+after, and the exact occurrence facts still list both locators.
+
+Everything else is one moved or provenance-changed item: any widening or shift
+(it cites text the prior did not, which can negate or re-scope the value), a
+narrowing that drops text not set off by a blank line (the rest of the value's
+line, or the line above or below it), a value at another
+offset or a different occurrence, a changed match count, selected index or
+selected span, a non-string or derived value, or a locator that does not
+describe its excerpt. No cue-word list is used; the rule is structural. Its
+accepted limit is what stays quiet: a dropped paragraph, such as a heading set
+off by a blank line above the value, raises no item even when that paragraph
+scopes the value. That text is carried in the fact for consumers that want to
+review it.
 
 Transition identity binds the source and both caller-provided observation
 identities. Item identity additionally binds the complete semantic change and

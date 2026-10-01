@@ -1,0 +1,224 @@
+{
+  "observationId": "79b6e1e392ee38f6b0a04c175c34a551abcc7b6430209a6d58d68bdff9a4f3fd",
+  "sourceId": "sparql-protocol",
+  "snapshotRef": "forage-snapshot:sparql-protocol?url=https%3A%2F%2Fwww.w3.org%2FTR%2F2013%2FREC-sparql11-protocol-20130321%2F&sha256=9b5cc75ca4190bb3b92f5c56c01a53546529a84b4df18cf1911888903cb6528b&fetchedAt=2026-10-01T02%3A08%3A10.949Z&snapshotSha256=4bf3a6d884dac214d9fb59fd285063feda476a0a8163f88cfe0c8818477f1a03",
+  "observedAt": "2026-10-01T02:11:56.540Z",
+  "proposals": [
+    {
+      "fieldPath": "doc.versionNumber",
+      "candidateValue": "1.1",
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "# SPARQL 1.1 Protocol",
+        "locator": "chars:66-87",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 66,
+            "end": 87
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "explicit",
+      "valueType": "number",
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "type-mismatch",
+        "valueInExcerpt": "not-evaluated",
+        "tokenBoundary": true
+      }
+    },
+    {
+      "fieldPath": "doc.publicationDate",
+      "candidateValue": "21 March 2013",
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "## W3C Recommendation 21 March 2013",
+        "locator": "chars:89-124",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 89,
+            "end": 124
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "explicit",
+      "valueType": "date",
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "format-invalid",
+        "valueInExcerpt": "not-evaluated",
+        "tokenBoundary": true
+      }
+    },
+    {
+      "fieldPath": "doc.firstEditor",
+      "candidateValue": "Lee Feigenbaum",
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "Editors:\n\nLee Feigenbaum, Cambridge Semantics [<lee@thefigtrees.net>](mailto:lee@thefigtrees.net)",
+        "locator": "chars:502-599",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 502,
+            "end": 599
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "explicit",
+      "valueType": "string",
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "ok",
+        "valueInExcerpt": "match",
+        "tokenBoundary": true
+      }
+    },
+    {
+      "fieldPath": "doc.title",
+      "candidateValue": "SPARQL 1.1 Protocol",
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "# SPARQL 1.1 Protocol",
+        "locator": "chars:66-87",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 66,
+            "end": 87
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "explicit",
+      "valueType": "string",
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "ok",
+        "valueInExcerpt": "match",
+        "tokenBoundary": true
+      }
+    },
+    {
+      "fieldPath": "doc.status",
+      "candidateValue": "W3C Recommendation",
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "## W3C Recommendation 21 March 2013",
+        "locator": "chars:89-124",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 89,
+            "end": 124
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "explicit",
+      "valueType": "enum",
+      "enumValues": [
+        "W3C Recommendation",
+        "W3C Working Draft",
+        "W3C Candidate Recommendation",
+        "Internal Draft"
+      ],
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "ok",
+        "valueInExcerpt": "match",
+        "tokenBoundary": true
+      }
+    },
+    {
+      "fieldPath": "doc.editorCount",
+      "candidateValue": 4,
+      "confidence": 1,
+      "provenance": {
+        "excerpt": "Editors:\n\nLee Feigenbaum, Cambridge Semantics [<lee@thefigtrees.net>](mailto:lee@thefigtrees.net)\n\nGregory Todd Williams, Rensselaer Polytechnic Institute [<greg@evilfunhouse.com>](mailto:greg@evilfunhouse.com)\n\nKendall Grant Clark, 1st Edition, Clark & Parsia LLC [<kendall@clarkparsia.com>](mailto:kendall@clarkparsia.com)\n\nElias Torres, 1st Edition, IBM Corporation [<eliast@us.ibm.com>](mailto:eliast@us.ibm.com)",
+        "locator": "chars:502-918",
+        "occurrence": {
+          "resolverVersion": "exact-occurrence-v1",
+          "count": 1,
+          "selected": {
+            "index": 0,
+            "start": 502,
+            "end": 918
+          },
+          "selection": "occurrence-hint",
+          "hintUsed": true,
+          "ambiguous": false
+        }
+      },
+      "extractor": "relay-extraction-provider:fieldwork-dispatch:fieldwork-extraction",
+      "inferenceType": "inferred",
+      "valueType": "number",
+      "producedBy": {
+        "model": "gpt-6.1-sol",
+        "modelSource": "configured",
+        "requestDigest": "sha256:4cfd5ecfd929e999d3b7448529576177dcd13fbf6047afc88fe90831c8533569"
+      },
+      "evidenceMatch": {
+        "checkerVersion": "evidence-match-v4",
+        "schema": "ok",
+        "valueInExcerpt": "not-applicable",
+        "tokenBoundary": true
+      }
+    }
+  ]
+}

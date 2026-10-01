@@ -61,6 +61,7 @@ export type {
 export { diffProposalSets, extractionProposalIdentity } from "./proposal-diff.js";
 export type {
   ConfidenceChangeFact,
+  ExcerptBoundaryChangeFact,
   FieldChangedEvent,
   FieldChangeKind,
   NewEntityAppearedEvent,

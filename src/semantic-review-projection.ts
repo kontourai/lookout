@@ -33,14 +33,23 @@ export function collectSemanticChanges(input: { prior: ProposalSetObservation; c
   }
   const representedPrior = changes.flatMap((change) => change.prior ? [change.prior] : []);
   const representedCurrent = changes.flatMap((change) => change.current ? [change.current] : []);
-  for (const prior of diff.facts.removedProposalEvidence ?? []) if (!diff.facts.provenanceChanges.some((item) => sameEvidence(item.prior, prior)) && !representedPrior.some((item) => sameEvidence(item, prior))) changes.push({ kind: "proposal-removed", fieldPath: prior.fieldPath, entityKey: prior.entityKey, prior });
-  for (const current of diff.facts.addedProposalEvidence ?? []) if (!diff.facts.provenanceChanges.some((item) => sameEvidence(item.current, current)) && !representedCurrent.some((item) => sameEvidence(item, current))) changes.push({ kind: addedKind(current), fieldPath: current.fieldPath, entityKey: current.entityKey, current });
+  // A field pair the diff already correlated accounts for both of its exact
+  // occurrences, whether its provenance changed or only its excerpt was re-cut.
+  const correlated = [...diff.facts.provenanceChanges, ...(diff.facts.excerptBoundaryChanges ?? [])];
+  for (const prior of diff.facts.removedProposalEvidence ?? []) if (!correlated.some((item) => sameEvidence(item.prior, prior)) && !representedPrior.some((item) => sameEvidence(item, prior))) changes.push({ kind: "proposal-removed", fieldPath: prior.fieldPath, entityKey: prior.entityKey, prior });
+  for (const current of diff.facts.addedProposalEvidence ?? []) if (!correlated.some((item) => sameEvidence(item.current, current)) && !representedCurrent.some((item) => sameEvidence(item, current))) changes.push({ kind: addedKind(current), fieldPath: current.fieldPath, entityKey: current.entityKey, current });
   // Against an incomplete prior, what the current run has that the prior
   // lacked may be new or may have sat in text the prior never read. Nothing
   // decides which, so a reviewer does.
   for (const current of diff.facts.newlyObservedProposalEvidence ?? []) changes.push({ kind: "proposal-newly-observed", fieldPath: current.fieldPath, entityKey: current.entityKey, current });
+  // One field change is one item: a value change already carries both sides'
+  // locators and excerpts, so the same pair's provenance change is not listed
+  // again. Matching is by object identity, so only that exact pair is merged.
+  // A pair that lost its provenance still gets its own gap item.
+  const valueChanged = changes.filter((change) => change.kind === "proposal-value-changed");
   for (const change of diff.facts.provenanceChanges) {
     const kind = incomplete(change.current) && !incomplete(change.prior) ? "provenance-gap" : change.prior.provenance.locator !== change.current.provenance.locator ? "proposal-moved" : "proposal-provenance-changed";
+    if (kind !== "provenance-gap" && valueChanged.some((item) => item.prior === change.prior && item.current === change.current)) continue;
     changes.push({ kind, fieldPath: change.current.fieldPath, entityKey: change.entityKey, prior: change.prior, current: change.current });
   }
   // A declared field missing from text that was never read is unknown, not a gap.

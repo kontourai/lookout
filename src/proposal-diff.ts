@@ -97,6 +97,14 @@ export interface ProvenanceChangeFact {
   readonly current: ProposalEvidence;
 }
 
+/** A retained field whose excerpt was narrowed around a value that stayed put. */
+export interface ExcerptBoundaryChangeFact extends ProvenanceChangeFact {
+  /** Prior excerpt text before the current excerpt's start, ending in a blank line. */
+  readonly droppedBefore: string;
+  /** Prior excerpt text after the current excerpt's end, starting with a blank line. */
+  readonly droppedAfter: string;
+}
+
 /**
  * A retained field that has a confidence on one side and none on the other.
  * Numeric differences between two present scores are not listed: provider
@@ -122,6 +130,14 @@ export interface ProposalSetFacts {
   readonly removedProposalEvidence?: readonly ProposalEvidence[];
   /** Retained fields whose confidence appeared or disappeared. */
   readonly confidenceChanges?: readonly ConfidenceChangeFact[];
+  /**
+   * Present when non-empty: retained fields whose equal string value sits at
+   * the same offsets while the current excerpt is a narrower cut of the prior
+   * one, citing nothing new and dropping only whole paragraphs. The cited value did
+   * not move, so these are not in `provenanceChanges`; the exact occurrence
+   * facts still list both locators, and each fact carries the dropped text.
+   */
+  readonly excerptBoundaryChanges?: readonly ExcerptBoundaryChangeFact[];
   /**
    * Current proposal occurrences missing from an incomplete prior observation.
    * The prior may have held them in text it never read, so they are not in the
@@ -238,6 +254,110 @@ function evidence(
   };
 }
 
+type Provenance = ExtractionProposal["provenance"];
+
+/**
+ * Provenance as equality sees it: the occurrence the resolver settled on, not
+ * how it was steered there. `selection` and `hintUsed` only record whether the
+ * provider sent an optional hint; the span, index, match count and ambiguity
+ * they led to all stay compared.
+ */
+function resolvedProvenance(provenance: Provenance): unknown {
+  const occurrence: unknown = provenance.occurrence;
+  if (typeof occurrence !== "object" || occurrence === null) return provenance;
+  const { selection: _selection, hintUsed: _hintUsed, ...resolved } = occurrence as Record<string, unknown>;
+  return { ...provenance, occurrence: resolved };
+}
+
+function excerptSpan(provenance: Provenance): { readonly start: number; readonly end: number } | null {
+  const match = /^chars:(\d+)-(\d+)$/.exec(provenance.locator);
+  if (match === null) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end - start === provenance.excerpt.length ? { start, end } : null;
+}
+
+/** Resolver facts that must not change when an excerpt is narrowed. */
+function besidesExcerptCut(provenance: Provenance): unknown {
+  const { excerpt: _excerpt, locator: _locator, occurrence, ...rest } = provenance as Provenance & Record<string, unknown>;
+  if (typeof occurrence !== "object" || occurrence === null) return { rest, occurrence };
+  // The match count, index and span describe the excerpt string, which differs
+  // by construction; resolver version and ambiguity must not.
+  const { selected: _selected, count: _count, selection: _selection, hintUsed: _hintUsed, ...steady } = occurrence as unknown as Record<string, unknown>;
+  return { rest, occurrence: steady };
+}
+
+/** The resolver, when it ran, settled on exactly the span the locator names. */
+function resolvedAtLocator(provenance: Provenance, span: { readonly start: number; readonly end: number }): boolean {
+  const occurrence: unknown = provenance.occurrence;
+  if (occurrence === undefined) return true;
+  const selected = (occurrence as { selected?: { start?: unknown; end?: unknown } } | null)?.selected;
+  return selected?.start === span.start && selected.end === span.end;
+}
+
+const wordCharacter = /[\p{L}\p{N}_]/u;
+const lineBreaks = (text: string): string => text.replace(/\r\n?/g, "\n");
+/** Dropped text ends with a blank line: a paragraph break before what was kept. */
+const endsWithBlankLine = (text: string): boolean => /\n[^\S\n]*\n$/.test(lineBreaks(text));
+/** Dropped text starts with a blank line: a paragraph break after what was kept. */
+const startsWithBlankLine = (text: string): boolean => /^\n[^\S\n]*\n/.test(lineBreaks(text));
+
+/** The value at `at` in `excerpt` is not the inside of a longer word or number. */
+function onTokenBoundaries(excerpt: string, at: number, length: number): boolean {
+  // Spread iterates code points, so an astral neighbour is tested whole.
+  const before = [...excerpt.slice(Math.max(0, at - 2), at)].pop() ?? "";
+  const after = [...excerpt.slice(at + length, at + length + 2)][0] ?? "";
+  return !wordCharacter.test(before) && !wordCharacter.test(after);
+}
+
+/**
+ * Whether the current proposal cites the same value at the same place as the
+ * prior, from a strictly narrower excerpt that cites nothing new. Returns the
+ * text the narrowing dropped, or `null` when the pair is a real provenance
+ * change. All of these must hold:
+ *
+ * - an equal, non-empty string value;
+ * - well-formed `chars:` locators that the resolver, if it ran, settled on;
+ * - a current span strictly inside the prior span, with the same text there;
+ * - only whole paragraphs dropped: a blank line separates the dropped text
+ *   from what is kept, so a hard-wrapped sentence is never cut;
+ * - the value first found at the same absolute offset in both excerpts, and
+ *   not as part of a longer word or number in either;
+ * - resolver version and ambiguity unchanged.
+ *
+ * Widening, shifting, dropping text beside the value, a different occurrence,
+ * or a value the excerpt does not literally contain is never a narrowing.
+ */
+function narrowedAroundValue(prior: ExtractionProposal, current: ExtractionProposal): DiffResult<{ readonly droppedBefore: string; readonly droppedAfter: string } | null> {
+  const no = { ok: true, value: null } as const;
+  const value: unknown = prior.candidateValue;
+  if (typeof value !== "string" || value.length === 0 || current.candidateValue !== value) return no;
+  const priorSpan = excerptSpan(prior.provenance);
+  const currentSpan = excerptSpan(current.provenance);
+  if (priorSpan === null || currentSpan === null) return no;
+  if (!resolvedAtLocator(prior.provenance, priorSpan) || !resolvedAtLocator(current.provenance, currentSpan)) return no;
+  // Stated for the reader; the text comparison below also fails for any span
+  // that is not inside the prior's.
+  if (currentSpan.start < priorSpan.start || currentSpan.end > priorSpan.end) return no;
+  if (currentSpan.start === priorSpan.start && currentSpan.end === priorSpan.end) return no;
+  const priorExcerpt = prior.provenance.excerpt;
+  const currentExcerpt = current.provenance.excerpt;
+  const droppedBefore = priorExcerpt.slice(0, currentSpan.start - priorSpan.start);
+  const droppedAfter = priorExcerpt.slice(currentSpan.end - priorSpan.start);
+  if (priorExcerpt.slice(droppedBefore.length, priorExcerpt.length - droppedAfter.length) !== currentExcerpt) return no;
+  if (droppedBefore !== "" && !endsWithBlankLine(droppedBefore)) return no;
+  if (droppedAfter !== "" && !startsWithBlankLine(droppedAfter)) return no;
+  const priorAt = priorExcerpt.indexOf(value);
+  const currentAt = currentExcerpt.indexOf(value);
+  if (priorAt < 0 || currentAt < 0 || priorSpan.start + priorAt !== currentSpan.start + currentAt) return no;
+  if (!onTokenBoundaries(priorExcerpt, priorAt, value.length) || !onTokenBoundaries(currentExcerpt, currentAt, value.length)) return no;
+  const priorRest = canonicalValueKey(besidesExcerptCut(prior.provenance));
+  if (!priorRest.ok) return priorRest;
+  const currentRest = canonicalValueKey(besidesExcerptCut(current.provenance));
+  if (!currentRest.ok) return currentRest;
+  return priorRest.key === currentRest.key ? { ok: true, value: { droppedBefore, droppedAfter } } : no;
+}
+
 function changeKind(prior: unknown, current: unknown): DiffResult<FieldChangeKind> {
   if (prior === undefined && current !== undefined) return { ok: true, value: "value-populated" };
   if (Array.isArray(prior) && Array.isArray(current)) {
@@ -260,7 +380,7 @@ function semanticFieldOrder<E>(items: readonly { entity: E; proposal: Extraction
     if (!fieldKey.ok) return fieldKey;
     let encoded;
     try {
-      encoded = canonicalValueKey({ value: item.proposal.candidateValue, provenance: item.proposal.provenance });
+      encoded = canonicalValueKey({ value: item.proposal.candidateValue, provenance: resolvedProvenance(item.proposal.provenance) });
     } catch (cause) {
       return { ok: false, error: { kind: "unsupported-value", message: "Proposal semantic content could not be inspected", path: "$", cause } };
     }
@@ -297,6 +417,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
   const addedProposalEvidence: ProposalEvidence[] = [];
   const removedProposalEvidence: ProposalEvidence[] = [];
   const confidenceChanges: ConfidenceChangeFact[] = [];
+  const excerptBoundaryChanges: ExcerptBoundaryChangeFact[] = [];
   const unobservedProposalOccurrences: ExtractionProposal[] = [];
   const unobservedProposalEvidence: ProposalEvidence[] = [];
   const unobservedEntities: string[] = [];
@@ -360,13 +481,18 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       const fieldKey = fieldKeyResult.value;
       const comparison = compareStructural(field.prior.proposal, field.current.proposal, {
         value: (proposal) => proposal.candidateValue,
-        provenance: (proposal) => proposal.provenance,
+        provenance: (proposal) => resolvedProvenance(proposal.provenance),
       });
       if (!comparison.ok) return comparison;
       const priorEvidence = evidence(input.prior, entityKey, fieldKey, field.prior.proposal);
       const currentEvidence = evidence(input.current, entityKey, fieldKey, field.current.proposal);
       if (comparison.value.provenanceChanged) {
-        provenanceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
+        const narrowed = comparison.value.valueChanged
+          ? ({ ok: true, value: null } as const)
+          : narrowedAroundValue(field.prior.proposal, field.current.proposal);
+        if (!narrowed.ok) return narrowed;
+        if (narrowed.value === null) provenanceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
+        else excerptBoundaryChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence, ...narrowed.value });
       }
       if ((field.prior.proposal.confidence === undefined) !== (field.current.proposal.confidence === undefined)) {
         confidenceChanges.push({ entityKey, fieldKey, prior: priorEvidence, current: currentEvidence });
@@ -447,6 +573,7 @@ export function diffProposalSets<E>(input: ProposalSetDiffInput<E>): DiffResult<
       events,
       facts: {
         retainedProposalOccurrences, addedProposalOccurrences, removedProposalOccurrences, provenanceChanges, removedEntities, addedProposalEvidence, removedProposalEvidence, confidenceChanges,
+        ...(excerptBoundaryChanges.length === 0 ? {} : { excerptBoundaryChanges }),
         ...(priorIncomplete ? { newlyObservedProposalOccurrences, newlyObservedProposalEvidence, newlyObservedEntities } : {}),
         ...(priorText === undefined ? {} : { newlyObservedEntityAnchors }),
         ...(currentIncomplete ? { unobservedProposalOccurrences, unobservedProposalEvidence, unobservedEntities } : {}),
