@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/kontourai/lookout/compare/v0.8.3...v0.8.4) (2026-10-01)
+
+
+### Fixes
+
+* **deps:** bump @kontourai/traverse to 4.0.0 ([#103](https://github.com/kontourai/lookout/issues/103)) ([8fa1bf7](https://github.com/kontourai/lookout/commit/8fa1bf7eb43d0c4fbdcccd0bd2247b266f103fcd))
+
 ## [0.8.3](https://github.com/kontourai/lookout/compare/v0.8.2...v0.8.3) (2026-09-29)
 
 
