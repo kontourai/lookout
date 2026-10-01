@@ -332,6 +332,8 @@ function narrowedAroundValue(prior: ExtractionProposal, current: ExtractionPropo
   const currentSpan = excerptSpan(current.provenance);
   if (priorSpan === null || currentSpan === null) return no;
   if (!resolvedAtLocator(prior.provenance, priorSpan) || !resolvedAtLocator(current.provenance, currentSpan)) return no;
+  // Stated for the reader; the text comparison below also fails for any span
+  // that is not inside the prior's.
   if (currentSpan.start < priorSpan.start || currentSpan.end > priorSpan.end) return no;
   if (currentSpan.start === priorSpan.start && currentSpan.end === priorSpan.end) return no;
   const priorExcerpt = prior.provenance.excerpt;

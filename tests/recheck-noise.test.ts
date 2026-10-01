@@ -169,6 +169,8 @@ describe("recheck review noise", () => {
     reported("added prefix", cited("active", "active", 100), cited("active", "inactive", 98));
     reported("added digit", cited("1,000 users", "1,000 users", 100), cited("1,000 users", "11,000 users", 99));
     reported("added suffix", cited("Approved", "Approved", 100), cited("Approved", "Approved: no", 100));
+    // The reverse of the last: narrowing that drops the rest of the value's line.
+    reported("dropped suffix", cited("Approved", "Approved: no", 100), cited("Approved", "Approved", 100));
   });
 
   test("a re-cut excerpt is still one item unless it is a pure whole-line narrowing", () => {
@@ -181,7 +183,7 @@ describe("recheck review noise", () => {
     // The same span, other text.
     reported("different text", prior, cited("Ada Example", "Authors:\n\nAda Example, Example Institute", 502));
     // A narrower span whose text is not the prior's text there.
-    reported("narrowed, other text", prior, cited("Ada Example", "Ada Example, Another Institut", 512));
+    reported("narrowed, other text", prior, cited("Ada Example", "Ada Example, Another Institute", 512));
     reported("disjoint", prior, cited("Ada Example", "Ada Example", 900));
     // Whole lines added before: widening, even though the old text is intact.
     reported("widened by lines", prior, cited("Ada Example", `Section 1\n\n${text}`, 491));
@@ -204,6 +206,9 @@ describe("recheck review noise", () => {
     // A locator that does not describe its excerpt cannot vouch for an offset.
     const narrowed = cited("Ada Example", wide.slice(10), 512);
     reported("malformed locator", cited("Ada Example", wide, 502), { ...narrowed, provenance: { ...narrowed.provenance, locator: "chars:512-530" } });
+    // The same when the resolver metadata repeats the wrong span, on the prior side.
+    const overlong = cited("Ada Example", wide, 502, { selected: { index: 0, start: 502, end: 560 } });
+    reported("malformed prior locator", { ...overlong, provenance: { ...overlong.provenance, locator: "chars:502-560" } }, narrowed);
     // The resolver settled somewhere other than the locator.
     reported("resolved elsewhere", cited("Ada Example", wide, 502), cited("Ada Example", wide.slice(10), 512, { selected: { index: 0, start: 612, end: 642 } }));
     // A resolution that became ambiguous is not the same citation.
