@@ -15,8 +15,8 @@ importers:
         specifier: 1.0.1
         version: 1.0.1
       '@kontourai/traverse':
-        specifier: 4.1.0
-        version: 4.1.0(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)
+        specifier: 5.0.1
+        version: 5.0.1(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)
     devDependencies:
       '@kontourai/flow-agents':
         specifier: 6.4.0
@@ -268,15 +268,6 @@ packages:
       playwright:
         optional: true
 
-  '@kontourai/forage@1.0.0':
-    resolution: {integrity: sha512-4OinV0u5Hyo98WiQOxXMAh03X5eZVigtzZ8b1U6xvN/rf8C51NPbUGbvoo8BMbFFg32a7qldnDo+6mPgQG+rNQ==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      playwright: '>=1.40.0'
-    peerDependenciesMeta:
-      playwright:
-        optional: true
-
   '@kontourai/forage@1.0.1':
     resolution: {integrity: sha512-sC7NQ57GjTk6CGiReCgxfG8EB4zFHkhZzXtTkNaisN2Fn4Ehi44a1YCaA1C8od6nvBxGE9eCcGJnWDnG5lhQ4A==}
     engines: {node: '>=22'}
@@ -336,8 +327,8 @@ packages:
       typescript:
         optional: true
 
-  '@kontourai/traverse@4.1.0':
-    resolution: {integrity: sha512-Edijk8TDOFNCesaoBS0FG6zN1fZZUFz3Wv4Djn9Eis2Gg3/N/8DSH3Cuo6V8Ddp482kKhe0nPVqyy63YyfETuA==}
+  '@kontourai/traverse@5.0.1':
+    resolution: {integrity: sha512-synKmVoM40sDmYMkbEGGK08Wf3Mooa1a1yStZMu2EVdo+MfavrIrgojPmzR+FKLKwqwsX1jLCIgkYxMO055QbQ==}
     engines: {node: '>=22'}
     peerDependencies:
       '@anthropic-ai/sdk': '>=0.20.0'
@@ -1028,8 +1019,6 @@ snapshots:
 
   '@kontourai/forage@0.4.1': {}
 
-  '@kontourai/forage@1.0.0': {}
-
   '@kontourai/forage@1.0.1': {}
 
   '@kontourai/relay@0.2.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3))':
@@ -1080,9 +1069,9 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/traverse@4.1.0(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)':
+  '@kontourai/traverse@5.0.1(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)':
     dependencies:
-      '@kontourai/forage': 1.0.0
+      '@kontourai/forage': 1.0.1
       linkedom: 0.18.13
       turndown: 7.2.4
     optionalDependencies:
