@@ -3,6 +3,7 @@
 // same bytes. Real check runner, real Forage fetch, real Traverse stores.
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -144,3 +145,52 @@ test("exact lookup through the adapter chooses the record its reference names wh
     if (resolved.ok) assert.deepEqual(resolved.snapshot.headers, written.headers);
   }
 });
+
+for (const [storeName, makeTraverseStore] of traverseStores) {
+  test(`Traverse ${storeName} store: a redirected capture keeps its redirects and repeats as unchanged-hash`, async (t) => {
+    const traverseStore = makeTraverseStore(t);
+    const store = fromTraverseSnapshotStore(traverseStore);
+    let tick = 0;
+    const runner = createCheckRunner({
+      store,
+      fetchSource: (config, options) => fetchSource({ ...config, respectRobots: false, retries: 0, minDelayMs: 0 }, {
+        ...options,
+        clock: () => `2026-10-01T00:01:${String(++tick).padStart(2, "0")}.000Z`,
+        fetch: async (url) => String(url).endsWith("/moved")
+          ? new Response(LATIN1.slice(), { status: 200, headers: { "content-type": "text/html; charset=iso-8859-1" } })
+          : new Response(null, { status: 302, headers: { location: "https://example.test/moved" } }),
+      }),
+    });
+    const first = await runner.check(source());
+    assert.equal(first.kind, "changed", JSON.stringify(first));
+    const resolved = await resolveLookoutSnapshot(refOf(first), { store });
+    assert.equal(resolved.ok, true, JSON.stringify(resolved));
+    if (resolved.ok) assert.deepEqual(resolved.snapshot.redirects, ["https://example.test/source-a"]);
+    const repeat = await runner.check(source());
+    assert.equal(repeat.kind, "unchanged-hash", JSON.stringify(repeat));
+    assert.equal((await traverseStore.list("source-a")).length, 1);
+  });
+
+  test(`Traverse ${storeName} store: a rendered capture is stored as html and resolves with its rendered marker`, async (t) => {
+    const traverseStore = makeTraverseStore(t);
+    const store = fromTraverseSnapshotStore(traverseStore);
+    const html = "<html><body><p>rendered café</p></body></html>";
+    const rendered = {
+      sourceId: "source-a",
+      url: "https://example.test/source-a",
+      status: 200,
+      fetchedAt: "2026-10-01T00:02:00.000Z",
+      body: html,
+      bodyHash: createHash("sha256").update(html, "utf8").digest("hex"),
+      headers: { "content-type": "text/plain" },
+      rendered: true,
+    };
+    await store.put(rendered);
+    const records = await traverseStore.list("source-a");
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.contentType, "html");
+    const resolved = await resolveLookoutSnapshot(buildSnapshotSourceRef(rendered), { store });
+    assert.equal(resolved.ok, true, JSON.stringify(resolved));
+    if (resolved.ok) assert.equal(resolved.snapshot.rendered, true);
+  });
+}

@@ -29,7 +29,21 @@ import type { Snapshot as TraverseSnapshot, SnapshotStore as TraverseSnapshotSto
  * Forage stores a body it cannot classify as text (an image other than PNG or
  * JPEG, `application/octet-stream`) as bytes, while Traverse resolves its
  * content type to `text`. Such a record is written as `contentType: "text"`
- * with `bodyBytes`: the bytes are kept, which is what replay needs.
+ * with `bodyBytes`: the bytes are kept, which is what Lookout's replay needs,
+ * but Traverse's own replay prepares it as empty text.
+ *
+ * Give Lookout a dedicated store, or source ids no Traverse fetcher writes.
+ * Mixing writers under one source id misclassifies: a Traverse capture hashed
+ * over decoded text (a rendered page, a fetch without `arrayBuffer()`, a
+ * record from before Traverse 5) has another digest than Lookout's byte hash
+ * of the same response, so each Lookout check after a Traverse write reports
+ * `changed`.
+ *
+ * `findExact` reads the source's whole history through `list()`, because a
+ * Traverse store has no exact lookup: its cost grows with that history, unlike
+ * Forage's bounded lookup. A stored record whose headers are not a record of
+ * strings makes every read of that source throw, so the check and the
+ * reference fail closed rather than resolve.
  *
  * Traverse stores cannot prune, so `retention` reports that it was skipped.
  */
