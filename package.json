@@ -51,7 +51,7 @@
     "@kontourai/traverse": "5.0.1"
   },
   "devDependencies": {
-    "@kontourai/flow-agents": "6.4.0",
+    "@kontourai/flow-agents": "6.5.0",
     "@kontourai/survey": "8.0.0",
     "@types/node": "^26.1.2",
     "ajv": "8.20.0",

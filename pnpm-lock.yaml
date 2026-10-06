@@ -19,8 +19,8 @@ importers:
         version: 5.0.1(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/relay@0.6.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3)))(typescript@7.0.2)
     devDependencies:
       '@kontourai/flow-agents':
-        specifier: 6.4.0
-        version: 6.4.0(@ai-sdk/provider@4.0.4)(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)(typescript@7.0.2)(zod@4.4.3)
+        specifier: 6.5.0
+        version: 6.5.0(@ai-sdk/provider@4.0.4)(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)(typescript@7.0.2)(zod@4.4.3)
       '@kontourai/survey':
         specifier: 8.0.0
         version: 8.0.0(typescript@7.0.2)
@@ -249,8 +249,8 @@ packages:
       '@kontourai/datum':
         optional: true
 
-  '@kontourai/flow-agents@6.4.0':
-    resolution: {integrity: sha512-PEQy4AWDuPvoZDjpKK9vBNyCT3ccOKrnl7NE10fqXEEn+aD8RWIVQ2f1tL18h2D9icki+MEIDznso7/1EHhTXQ==}
+  '@kontourai/flow-agents@6.5.0':
+    resolution: {integrity: sha512-QEFlpjbupLzuaNaSCRQdQMKrTBchLW3KEPnq2tSlcVC8QJIhmys0sWfrNMnJlhNLgoLv6xIzRKbHjUSHVEYZug==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -986,7 +986,7 @@ snapshots:
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
 
-  '@kontourai/flow-agents@6.4.0(@ai-sdk/provider@4.0.4)(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)(typescript@7.0.2)(zod@4.4.3)':
+  '@kontourai/flow-agents@6.5.0(@ai-sdk/provider@4.0.4)(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)(typescript@7.0.2)(zod@4.4.3)':
     dependencies:
       '@kontourai/conduit': 0.7.1
       '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@4.0.4)(@anthropic-ai/sdk@0.116.0(zod@4.4.3))(@kontourai/bearing@0.2.0)(@kontourai/datum@0.8.0)
@@ -1051,7 +1051,7 @@ snapshots:
 
   '@kontourai/survey@2.0.0(typescript@7.0.2)':
     dependencies:
-      '@kontourai/surface': 2.14.0
+      '@kontourai/surface': 2.17.0
     optionalDependencies:
       typescript: 7.0.2
     transitivePeerDependencies:
