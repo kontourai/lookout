@@ -349,6 +349,29 @@ Forage's SSRF-guarded fetcher), `fetchOptions`, and
 `clock` — so checks run with no live network or timers in tests. Injecting either
 `fetchSource` or `fetchOptions.fetch` overrides the default guarded transport.
 
+### Using a Traverse snapshot store
+
+`store` is a Forage snapshot store. A Traverse store has the same method names
+but a different record: it requires a resolved `contentType`, keeps a binary
+body on `bodyBytes`, and its bundled stores refuse a record that lacks them.
+Passed directly, it refuses every capture (an `error` result of kind
+`persistence`, nothing stored), and a Traverse record read as the prior is
+refused as `prior-read` rather than compared. Wrap it instead:
+
+```js
+import { createFilesystemSnapshotStore } from "@kontourai/traverse/fetch";
+import { createCheckRunner, fromTraverseSnapshotStore } from "@kontourai/lookout";
+
+const store = fromTraverseSnapshotStore(createFilesystemSnapshotStore({ root }));
+const runner = createCheckRunner({ store });
+```
+
+The adapter adds `contentType` from the captured `Content-Type` header, moves
+a binary body to `bodyBytes` and back, and implements exact lookup, so
+captures read back unchanged, repeats classify as `unchanged-hash`, and
+references resolve through `resolveLookoutSnapshot(ref, { store })`. Traverse
+stores cannot prune, so `retention` is skipped with a warning.
+
 ### Bring your own source store
 
 The registry file is a convenience, not the contract. What check

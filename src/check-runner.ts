@@ -115,6 +115,15 @@ export function createCheckRunner(options: CreateCheckRunnerOptions): CheckRunne
     } catch (error) {
       return lookoutError(common(), "prior-read", error);
     }
+    if (prior !== undefined && isTraverseRecord(prior)) {
+      // A Traverse store passed as the store. It refuses every capture this
+      // runner writes, so its prior must not stand in for one either.
+      return lookoutError(
+        common(),
+        "prior-read",
+        "the snapshot store returned a Traverse snapshot record, not a Forage snapshot; pass a Traverse store through fromTraverseSnapshotStore()",
+      );
+    }
 
     let fetched: FetchResult;
     try {
@@ -246,6 +255,11 @@ function isRepeatCapture(prior: Snapshot, current: Snapshot): boolean {
     prior.rendered === current.rendered &&
     isDeepStrictEqual(prior.redirects, current.redirects) &&
     REVALIDATION_HEADERS.every((name) => prior.headers?.[name] === current.headers?.[name]);
+}
+
+/** Fields only a Traverse snapshot record carries; no Forage store returns them. */
+function isTraverseRecord(snapshot: Snapshot): boolean {
+  return Object.hasOwn(snapshot, "contentType") || Object.hasOwn(snapshot, "bodyBytes");
 }
 
 function lookupOf(reference: unknown): SnapshotLookup | undefined {
