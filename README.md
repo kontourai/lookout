@@ -376,9 +376,10 @@ reads the source's whole history, so its cost grows with that history.
 Give Lookout a dedicated Traverse store, or source ids no Traverse fetcher
 writes. Under a shared source id, a Traverse capture hashed over decoded text
 (a rendered page, a fetch without `arrayBuffer()`, a record from before
-Traverse 5) makes the next Lookout check report `changed`, and a binary body
-Traverse does not classify as binary (for example a GIF) replays in Traverse
-as empty text.
+Traverse 5) makes the next Lookout check report `changed` when the response is
+not valid UTF-8, and a binary body Traverse does not classify as binary (for
+example a GIF) cannot be prepared by Traverse: replay through `fetchAndExtract`
+returns a binary-content error.
 
 ### Bring your own source store
 
