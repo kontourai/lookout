@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.8](https://github.com/kontourai/lookout/compare/v0.8.7...v0.8.8) (2026-10-06)
+
+
+### Fixes
+
+* store and read back captures through a Traverse snapshot store ([#116](https://github.com/kontourai/lookout/issues/116)) ([24cb6be](https://github.com/kontourai/lookout/commit/24cb6be8db72f0e52d473fa6f0dd47e94b65dc2d))
+
 ## [0.8.7](https://github.com/kontourai/lookout/compare/v0.8.6...v0.8.7) (2026-10-05)
 
 
