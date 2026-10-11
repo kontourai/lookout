@@ -30,6 +30,9 @@ integrity. Scheduling stays external. The runner NEVER throws.
 - Package-shape/exports/bin changes: `npm run check:pack`.
 - Docs/decision changes: `npm run check:decisions` (and regenerate the index
   with `npm run gen:decisions-index` when a decision file changes).
+- Docs are published with docs-kit: `docs-kit.json` lists the published docs
+  and MCP topics, and `npm run docs:check` is the gate. When you change code a
+  document `covers`, update that document.
 - Content/fixture changes: `npm run check:content-boundary`.
 - Anything before push: `npm run verify` (content-boundary + decisions +
   typecheck + test + pack sanity — the exact chain CI's `verify` job runs).
