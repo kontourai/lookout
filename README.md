@@ -2,6 +2,13 @@
 
 **Cheap, honest drift detection for content you re-check over time — "did this source change since we last looked?"**
 
+[![npm version](https://img.shields.io/npm/v/%40kontourai%2Flookout)](https://www.npmjs.com/package/@kontourai/lookout)
+[![CI](https://github.com/kontourai/lookout/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/lookout/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/lookout/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+[Documentation](https://kontourai.github.io/lookout/)
+
 A small **source registry** and **non-throwing drift-check runner** built on
 [Forage](https://github.com/kontourai/forage) snapshots. It composes Forage for
 fetching and snapshot storage, provides deterministic proposal diffing, and
