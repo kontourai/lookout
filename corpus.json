@@ -1,5 +1,23 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "purpose": "Tell callers honestly whether a source changed since its previous observation.",
+  "builtOn": [
+    {
+      "product": "datum",
+      "via": "@kontourai/datum",
+      "for": "Resolve configured extraction providers for source observations."
+    },
+    {
+      "product": "forage",
+      "via": "@kontourai/forage",
+      "for": "Fetch and revalidate sources with durable snapshot references."
+    },
+    {
+      "product": "traverse",
+      "via": "@kontourai/traverse",
+      "for": "Extract, validate, and compare provenance-bearing proposals and prepared artifacts."
+    }
+  ],
   "product": "lookout",
   "title": "Lookout",
   "tagline": "Cheap, honest drift detection for sources you re-check over time, built on Forage snapshots.",
