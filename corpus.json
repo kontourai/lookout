@@ -5,7 +5,7 @@
     {
       "product": "datum",
       "via": "@kontourai/datum",
-      "for": "Resolve configured extraction providers for source observations."
+      "for": "Expose Datum's provider resolver as an opt-in seam, unused by default."
     },
     {
       "product": "forage",
