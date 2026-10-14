@@ -50,5 +50,6 @@
     { "id": "glossary", "title": "Lookout vocabulary", "source": "CONTEXT.md#term-glossary" },
     { "id": "boundary", "title": "Ownership boundary with Forage, Traverse, and the trust layer", "source": "CONTEXT.md#boundary" }
   ],
-  "exclude": ["docs/planning/**"]
+  "exclude": ["docs/planning/**"],
+  "decisions": {}
 }
