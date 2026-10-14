@@ -25,6 +25,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: lookout
+          # check:decisions passes --base DECISIONS_BASE, which must resolve to
+          # a commit; a shallow clone lacks the pull request's base commit.
+          fetch-depth: 0
 
       # Reads the exact pnpm version from package.json's packageManager field.
       - name: Setup pnpm
@@ -46,6 +49,12 @@ jobs:
       - name: Verify
         run: npm run verify
         working-directory: lookout
+        env:
+          # check:decisions compares against this ref: a pull request against
+          # its base, a push to main against the pushed range. Lookout has no
+          # numbered ADR directory, so no ADR freeze runs yet; declaring
+          # decisions.adr in corpus.json would turn it on with this base.
+          DECISIONS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
 
   # The publish job's environment, exercised on every pull request.
   #

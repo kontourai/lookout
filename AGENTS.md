@@ -28,8 +28,14 @@ integrity. Scheduling stays external. The runner NEVER throws.
 
 - Library/types changes: `npm test` (build + Node tests against `dist/`).
 - Package-shape/exports/bin changes: `npm run check:pack`.
-- Docs/decision changes: `npm run check:decisions` (and regenerate the index
-  with `npm run gen:decisions-index` when a decision file changes).
+- Docs/decision changes: one living record per subject in
+  `docs/decisions/<slug>.md`, in the
+  [Corpus decision-record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md).
+  After editing a record, run `npm run gen:decisions-index`.
+  `npm run check:decisions` validates the records and the index. It passes
+  `--base $DECISIONS_BASE` (default `origin/main`; CI sets it to the pull
+  request base), which Corpus uses for the ADR freeze if `decisions.adr` is
+  ever declared; Lookout has no numbered ADRs.
 - Docs are published with Corpus: `corpus.json` lists the published docs
   and MCP topics, and `npm run docs:check` is the gate. When you change code a
   document `covers`, update that document.
