@@ -11,11 +11,13 @@
 
 A small **source registry** and **non-throwing drift-check runner** built on
 [Forage](https://github.com/kontourai/forage) snapshots. It composes Forage for
-fetching and snapshot storage, provides deterministic proposal diffing, and
-emits neutral, typed drift — its own vocabulary, in its own dependency-free
-package. It does **not** implement acquisition or extraction, author trust-layer
-records, project to Surface, review claims, notify, crawl, or schedule.
-Operational failures are returned as typed results.
+fetching and snapshot storage, uses Traverse's schema and proposal contracts
+for deterministic proposal diffing, and uses Datum for the provider-resolution
+capability. These are declared package dependencies. Lookout emits neutral,
+typed drift records in its own vocabulary; extraction implementations,
+trust-bundle authoring, Surface projection, review policy, notifications,
+crawling, and scheduling remain consumer responsibilities. Operational failures
+are returned as typed results.
 
 ## Quick start
 
