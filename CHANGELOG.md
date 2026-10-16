@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.9](https://github.com/kontourai/lookout/compare/v0.8.8...v0.8.9) (2026-10-16)
+
+
+### Documentation
+
+* adopt docs-kit gate, Pages site, and MCP bundle ([#119](https://github.com/kontourai/lookout/issues/119)) ([ddc9f57](https://github.com/kontourai/lookout/commit/ddc9f57905969740a20f78ee25d036b742af6cdc))
+* declare purpose and building blocks in Corpus v2 ([#124](https://github.com/kontourai/lookout/issues/124)) ([75dbdc8](https://github.com/kontourai/lookout/commit/75dbdc85a6400e28269fcea629528fcaaca763df))
+* **readme:** add badges and documentation link to header ([#123](https://github.com/kontourai/lookout/issues/123)) ([54ac241](https://github.com/kontourai/lookout/commit/54ac24173167bc09ed20bc7cd8de4b68bd99afad))
+* state drift package dependencies and consumer boundaries ([#127](https://github.com/kontourai/lookout/issues/127)) ([9c310b2](https://github.com/kontourai/lookout/commit/9c310b2ee9e8fdddd1752e419e513fb69a83f892))
+
 ## [0.8.8](https://github.com/kontourai/lookout/compare/v0.8.7...v0.8.8) (2026-10-06)
 
 
