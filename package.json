@@ -48,14 +48,14 @@
     "docs:build": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus build"
   },
   "dependencies": {
-    "@kontourai/datum": "0.8.0",
-    "@kontourai/forage": "1.0.1",
-    "@kontourai/traverse": "5.0.1"
+    "@kontourai/datum": "0.8.1",
+    "@kontourai/forage": "1.0.2",
+    "@kontourai/traverse": "5.0.3"
   },
   "devDependencies": {
-    "@kontourai/flow-agents": "6.4.0",
-    "@kontourai/survey": "8.0.0",
-    "@kontourai/veritas": "1.11.2",
+    "@kontourai/flow-agents": "9.4.0",
+    "@kontourai/survey": "8.2.1",
+    "@kontourai/veritas": "1.11.4",
     "@types/node": "^26.1.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
