@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.10](https://github.com/kontourai/lookout/compare/v0.8.9...v0.8.10) (2026-11-09)
+
+
+### Documentation
+
+* map source changes to canonical contract guides ([#134](https://github.com/kontourai/lookout/issues/134)) ([a0cb4af](https://github.com/kontourai/lookout/commit/a0cb4af422d9acf69fef50f6b97de03c152a279d))
+
 ## [0.8.9](https://github.com/kontourai/lookout/compare/v0.8.8...v0.8.9) (2026-10-16)
 
 
